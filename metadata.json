@@ -1,0 +1,8 @@
+{
+  "name": "BANKULEP VS.1",
+  "description": "Secure purple banking portal with CAPTCHA, featuring unified login access for both administrators and clients.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
