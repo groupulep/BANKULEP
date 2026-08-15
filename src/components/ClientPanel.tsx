@@ -67,6 +67,7 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
 
   const [customCuotaAmount, setCustomCuotaAmount] = useState(currentLoanQuota.toString());
   const [cuotaPaySuccess, setCuotaPaySuccess] = useState(false);
+  const [cuotaPayError, setCuotaPayError] = useState<string | null>(null);
   const [paidCuotasCount, setPaidCuotasCount] = useState(0);
 
   const userTransactions = transactions.filter((t) => t.userId === user.id);
@@ -86,7 +87,8 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
         : parseFloat(customCuotaAmount || '0');
 
     if (!payAmt || payAmt <= 0) {
-      alert('Ingresa un monto válido para pagar.');
+      setCuotaPayError('Ingresa un monto válido para pagar.');
+      setTimeout(() => setCuotaPayError(null), 4000);
       return;
     }
 
@@ -366,10 +368,24 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
                   <span>¡Solicitud enviada a WhatsApp 3169008561 correctamente!</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setCuotaPaySuccess(false)}
-                  className="text-emerald-900 underline ml-2 shrink-0"
+                  className="text-emerald-900 underline ml-2 shrink-0 cursor-pointer"
                 >
                   Realizar otro pago
+                </button>
+              </div>
+            )}
+
+            {cuotaPayError && (
+              <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center justify-between text-xs text-rose-800 font-semibold animate-in fade-in">
+                <span>⚠️ {cuotaPayError}</span>
+                <button
+                  type="button"
+                  onClick={() => setCuotaPayError(null)}
+                  className="text-rose-950 underline ml-2 shrink-0 cursor-pointer"
+                >
+                  Cerrar
                 </button>
               </div>
             )}

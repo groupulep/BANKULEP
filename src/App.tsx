@@ -430,8 +430,6 @@ export default function App() {
       <div>
         <Navbar
           currentUser={currentUser}
-          allUsers={users}
-          onSwitchUser={(u) => setCurrentUser(u)}
           onLogout={() => setCurrentUser(null)}
         />
 

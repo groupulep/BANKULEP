@@ -82,9 +82,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [expandedUserIds, setExpandedUserIds] = useState<Record<string, boolean>>({});
   const [customPaymentAmounts, setCustomPaymentAmounts] = useState<Record<string, string>>({});
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   const toggleExpandUser = (userId: string) => {
     setExpandedUserIds((prev) => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
+  const handleConfirmDeleteUser = () => {
+    if (!userToDelete) return;
+    const deletedName = userToDelete.name;
+    const deletedId = userToDelete.id;
+    onDeleteUser(deletedId);
+    if (editingUser && editingUser.id === deletedId) {
+      setEditingUser(null);
+    }
+    setUserToDelete(null);
+    setDeleteNotice(`✅ El cliente "${deletedName}" fue eliminado exitosamente de la base de datos y del sistema.`);
+    setTimeout(() => {
+      setDeleteNotice(null);
+    }, 5000);
   };
 
   const handleMarkPaymentAsPaid = (u: User, type: 'cuota' | 'total' | 'custom', amountToPay?: number) => {
@@ -96,12 +113,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         : Math.min(u.creditUsed, u.loanQuota ?? 1250000);
 
     if (payAmount <= 0) {
-      alert(`El monto a pagar debe ser mayor a 0.`);
+      setPaymentNotice(`⚠️ El monto a pagar debe ser mayor a 0.`);
+      setTimeout(() => setPaymentNotice(null), 4000);
       return;
     }
 
     if (payAmount > u.creditUsed) {
-      alert(`El monto a pagar ($${payAmount.toLocaleString('es-CO')} COP) no puede ser mayor que la deuda del cliente ($${u.creditUsed.toLocaleString('es-CO')} COP).`);
+      setPaymentNotice(`⚠️ El monto a pagar ($${payAmount.toLocaleString('es-CO')} COP) no puede ser mayor que la deuda del cliente ($${u.creditUsed.toLocaleString('es-CO')} COP).`);
+      setTimeout(() => setPaymentNotice(null), 4000);
       return;
     }
 
@@ -418,13 +437,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* TAB 1: GESTIÓN DE CLIENTES */}
       {activeTab === 'users' && (
         <div className="bg-white p-6 rounded-3xl border border-purple-100 shadow-sm space-y-4">
+          {/* Delete Action Notice Banner */}
+          {deleteNotice && (
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center justify-between text-xs text-emerald-900 font-bold animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>{deleteNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteNotice(null)}
+                className="text-emerald-950 hover:underline text-xs cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-extrabold text-purple-950">Directorio de Cuentas de Clientes</h2>
               <button
                 type="button"
                 onClick={() => setIsAddingUser(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-white rounded-xl font-bold text-xs transition-all shadow-sm"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-white rounded-xl font-bold text-xs transition-all shadow-sm cursor-pointer"
               >
                 <UserPlus className="w-3.5 h-3.5 text-purple-300" />
                 <span>Agregar Cliente</span>
@@ -500,30 +536,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
+                          type="button"
                           onClick={() => {
                             setActiveTab('payments');
                             setExpandedUserIds({ [u.id]: true });
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-200 rounded-xl font-bold text-xs transition-all shadow-sm"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-200 rounded-xl font-bold text-xs transition-all shadow-sm cursor-pointer"
                           title="Pagos de Cuotas o Total"
                         >
                           <CreditCard className="w-3.5 h-3.5 text-purple-800" />
                           <span>Pagos</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => openEditModal(u)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-white rounded-xl font-bold text-xs transition-all shadow-sm"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-white rounded-xl font-bold text-xs transition-all shadow-sm cursor-pointer"
                         >
                           <Sliders className="w-3.5 h-3.5 text-purple-300" />
                           <span>Editar Cliente</span>
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(`¿Está seguro de eliminar al cliente ${u.name}?`)) {
-                              onDeleteUser(u.id);
-                            }
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs transition-all shadow-sm"
+                          type="button"
+                          onClick={() => setUserToDelete(u)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs transition-all shadow-sm cursor-pointer"
                           title="Eliminar Cliente"
                         >
                           <Trash2 className="w-3.5 h-3.5 text-rose-600" />
@@ -1058,21 +1093,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-purple-100">
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-purple-100">
                 <button
                   type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition-colors"
+                  onClick={() => {
+                    setUserToDelete(editingUser);
+                  }}
+                  className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  Cancelar
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Eliminar Cliente</span>
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-purple-950 hover:bg-purple-900 text-white font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Cambios</span>
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingUser(null)}
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-purple-950 hover:bg-purple-900 text-white font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Guardar Cambios</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1362,8 +1410,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {log.success ? 'Verificado OK' : 'Fallido / Bot Bloqueado'}
                       </span>
                       <button
+                        type="button"
                         onClick={() => onDeleteCaptchaLog(log.id)}
-                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="Eliminar Registro"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1372,6 +1421,51 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIRMACIÓN ELIMINAR CLIENTE */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-rose-100 shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-extrabold text-slate-900">
+                ¿Eliminar cliente definitivamente?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Esta acción eliminará de forma permanente al cliente y todos sus registros asociados.
+              </p>
+            </div>
+
+            <div className="bg-rose-50/60 border border-rose-100 rounded-2xl p-3.5 text-xs space-y-1 font-mono">
+              <p className="font-extrabold text-rose-950 font-sans text-sm">{userToDelete.name}</p>
+              <p className="text-slate-600">Cédula: <strong>{userToDelete.cedula}</strong></p>
+              <p className="text-slate-600">Email: {userToDelete.email}</p>
+              <p className="text-slate-600">CLABE: {userToDelete.clabe}</p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUser}
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sí, Eliminar</span>
+              </button>
             </div>
           </div>
         </div>
