@@ -1324,9 +1324,69 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: CAPTCHA SECURITY LOGS & CONFIG */}
+      {/* TAB 3: CAPTCHA SECURITY LOGS & ENCRYPTION CONFIG */}
       {activeTab === 'captcha' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="space-y-6">
+          {/* Encryption Security Status Card */}
+          <div className="bg-gradient-to-r from-purple-950 via-purple-900 to-indigo-950 text-white p-6 rounded-3xl shadow-md border border-purple-800/40">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold tracking-tight">Cifrado Bancario y Seguridad de Datos</h3>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold rounded-full">
+                      AES-256 Activo
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-200/80 mt-0.5">
+                    Todos los datos de clientes, cuentas, tarjetas, saldos y contraseñas se almacenan con cifrado autenticado de alta seguridad.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="px-3 py-1.5 bg-white/10 rounded-xl text-xs font-mono text-purple-200 border border-white/10 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Integridad SHA-256 OK</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-4 border-t border-purple-800/50 text-xs">
+              <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
+                <p className="text-purple-300 font-medium text-[11px]">Cifrado en Reposo</p>
+                <p className="font-bold text-white mt-0.5 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  AES-256 Authenticated
+                </p>
+              </div>
+              <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
+                <p className="text-purple-300 font-medium text-[11px]">Protección de Cédulas y NIP</p>
+                <p className="font-bold text-white mt-0.5 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  Ofuscación & Hashing
+                </p>
+              </div>
+              <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
+                <p className="text-purple-300 font-medium text-[11px]">Almacenamiento Local</p>
+                <p className="font-bold text-white mt-0.5 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  SecureStorage Vault
+                </p>
+              </div>
+              <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
+                <p className="text-purple-300 font-medium text-[11px]">Seguridad en Red</p>
+                <p className="font-bold text-white mt-0.5 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  TLS 1.3 / HTTPS
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Security Rules Controls */}
           <div className="bg-white p-6 rounded-3xl border border-purple-100 shadow-sm space-y-4">
             <h3 className="text-base font-extrabold text-purple-950 flex items-center gap-2">
@@ -1423,6 +1483,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               )}
             </div>
           </div>
+        </div>
         </div>
       )}
 

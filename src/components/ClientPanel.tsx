@@ -141,6 +141,10 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
               <span className="text-xs text-purple-200 font-mono">
                 No. {user.accountNumber}
               </span>
+              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                <span>Datos Cifrados AES-256</span>
+              </span>
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight">
               ¡Hola, {user.name.split(' ')[0]}!

@@ -33,16 +33,16 @@ import {
   saveSecuritySettingsToFirebase,
   subscribeSecuritySettingsFirebase
 } from './lib/firebase';
+import { secureStorage } from './lib/crypto';
 
 export default function App() {
-  // Load state from LocalStorage or use Defaults
+  // Load state from Encrypted SecureStorage or use Defaults
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('nubank_users');
-    if (!saved) return INITIAL_USERS;
+    const rawUsers = secureStorage.getItem<User[]>('nubank_users', INITIAL_USERS);
+    if (!rawUsers || rawUsers.length === 0) return INITIAL_USERS;
     try {
-      const parsed = JSON.parse(saved) as User[];
       // Filter out legacy demo mock clients
-      const realUsers = parsed.filter(
+      const realUsers = rawUsers.filter(
         (u) => u.id !== 'usr_client_1' && u.id !== 'usr_client_2' && u.id !== 'usr_client_3'
       );
 
@@ -73,38 +73,31 @@ export default function App() {
   });
 
   const [cards, setCards] = useState<BankCard[]>(() => {
-    const saved = localStorage.getItem('nubank_cards');
-    return saved ? JSON.parse(saved) : INITIAL_CARDS;
+    return secureStorage.getItem<BankCard[]>('nubank_cards', INITIAL_CARDS);
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('nubank_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return secureStorage.getItem<Transaction[]>('nubank_transactions', INITIAL_TRANSACTIONS);
   });
 
   const [cajitas, setCajitas] = useState<Cajita[]>(() => {
-    const saved = localStorage.getItem('nubank_cajitas');
-    return saved ? JSON.parse(saved) : INITIAL_CAJITAS;
+    return secureStorage.getItem<Cajita[]>('nubank_cajitas', INITIAL_CAJITAS);
   });
 
   const [loans, setLoans] = useState<LoanRequest[]>(() => {
-    const saved = localStorage.getItem('nubank_loans');
-    return saved ? JSON.parse(saved) : INITIAL_LOANS;
+    return secureStorage.getItem<LoanRequest[]>('nubank_loans', INITIAL_LOANS);
   });
 
   const [captchaLogs, setCaptchaLogs] = useState<CaptchaLog[]>(() => {
-    const saved = localStorage.getItem('nubank_captcha_logs');
-    return saved ? JSON.parse(saved) : INITIAL_CAPTCHA_LOGS;
+    return secureStorage.getItem<CaptchaLog[]>('nubank_captcha_logs', INITIAL_CAPTCHA_LOGS);
   });
 
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => {
-    const saved = localStorage.getItem('nubank_security');
-    return saved ? JSON.parse(saved) : INITIAL_SECURITY_SETTINGS;
+    return secureStorage.getItem<SecuritySettings>('nubank_security', INITIAL_SECURITY_SETTINGS);
   });
 
   const [adminCapital, setAdminCapital] = useState<number>(() => {
-    const saved = localStorage.getItem('nubank_admin_capital');
-    return saved ? JSON.parse(saved) : 250000000;
+    return secureStorage.getItem<number>('nubank_admin_capital', 250000000);
   });
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -186,9 +179,9 @@ export default function App() {
     };
   }, []);
 
-  // Sync to LocalStorage & Keep currentUser synced
+  // Sync to Encrypted SecureStorage & Keep currentUser synced
   useEffect(() => {
-    localStorage.setItem('nubank_users', JSON.stringify(users));
+    secureStorage.setItem('nubank_users', users);
     if (currentUser) {
       const fresh = users.find((u) => u.id === currentUser.id);
       if (fresh && fresh.name !== currentUser.name) {
@@ -198,31 +191,31 @@ export default function App() {
   }, [users, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_cards', JSON.stringify(cards));
+    secureStorage.setItem('nubank_cards', cards);
   }, [cards]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_transactions', JSON.stringify(transactions));
+    secureStorage.setItem('nubank_transactions', transactions);
   }, [transactions]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_cajitas', JSON.stringify(cajitas));
+    secureStorage.setItem('nubank_cajitas', cajitas);
   }, [cajitas]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_loans', JSON.stringify(loans));
+    secureStorage.setItem('nubank_loans', loans);
   }, [loans]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_captcha_logs', JSON.stringify(captchaLogs));
+    secureStorage.setItem('nubank_captcha_logs', captchaLogs);
   }, [captchaLogs]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_security', JSON.stringify(securitySettings));
+    secureStorage.setItem('nubank_security', securitySettings);
   }, [securitySettings]);
 
   useEffect(() => {
-    localStorage.setItem('nubank_admin_capital', JSON.stringify(adminCapital));
+    secureStorage.setItem('nubank_admin_capital', adminCapital);
   }, [adminCapital]);
 
   const handleAdjustAdminCapital = (delta: number) => {

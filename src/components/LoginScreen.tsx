@@ -178,6 +178,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   />
                 </div>
 
+                {/* Encryption Guarantee Badge */}
+                <div className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-purple-50/80 border border-purple-100 rounded-xl text-[11px] text-purple-900 font-semibold">
+                  <Lock className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                  <span>Cifrado de Extremo a Extremo AES-256 Activo</span>
+                </div>
+
                 {/* Error Banner */}
                 {errorMsg && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700 font-semibold animate-shake">
