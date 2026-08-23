@@ -15,6 +15,7 @@ import { ClientPanel } from './components/ClientPanel';
 import { AdminPanel } from './components/AdminPanel';
 import {
   saveUserToFirebase,
+  syncUsersToFirebase,
   deleteUserFromFirebase,
   subscribeUsersFirebase,
   saveCaptchaLogToFirebase,
@@ -41,28 +42,33 @@ export default function App() {
     const rawUsers = secureStorage.getItem<User[]>('nubank_users', INITIAL_USERS);
     if (!rawUsers || rawUsers.length === 0) return INITIAL_USERS;
     try {
-      // Filter out legacy demo mock clients
-      const realUsers = rawUsers.filter(
-        (u) => u.id !== 'usr_client_1' && u.id !== 'usr_client_2' && u.id !== 'usr_client_3'
-      );
+      const updatedList = [...INITIAL_USERS];
 
-      const updatedList = INITIAL_USERS.map((initUser) => {
-        const existing = realUsers.find((u) => u.id === initUser.id);
-        if (!existing) return initUser;
-        return {
-          ...existing,
-          name: initUser.name,
-          cedula: initUser.cedula,
-          email: initUser.email,
-          pin: initUser.pin,
-          role: 'admin' as const,
-          status: 'active' as const
-        };
-      });
+      // Merge saved state for users, updating names if needed
+      rawUsers.forEach((savedUser) => {
+        const index = updatedList.findIndex((u) => u.id === savedUser.id);
+        if (index !== -1) {
+          // If already in list, merge details preserving credentials
+          const cleanName =
+            savedUser.name === 'Cliente Activo ULEP' || savedUser.name?.includes('Demo')
+              ? updatedList[index].name
+              : savedUser.name === 'Cliente Cancelado ULEP'
+              ? 'María Fernanda López'
+              : savedUser.name === 'Cliente en Mora ULEP'
+              ? 'Diego Alejandro Ramírez'
+              : savedUser.name || updatedList[index].name;
 
-      realUsers.forEach((pUser) => {
-        if (!updatedList.some((u) => u.id === pUser.id)) {
-          updatedList.push(pUser);
+          updatedList[index] = {
+            ...updatedList[index],
+            ...savedUser,
+            name: cleanName,
+            cedula: updatedList[index].cedula,
+            pin: updatedList[index].pin,
+            role: updatedList[index].role,
+            status: savedUser.status || updatedList[index].status
+          };
+        } else {
+          updatedList.push(savedUser);
         }
       });
 
@@ -255,6 +261,44 @@ export default function App() {
   const handleAddUser = (newUser: User) => {
     setUsers((prev) => [...prev, newUser]);
     saveUserToFirebase(newUser);
+  };
+
+  // Add or update batch users (bulk upload)
+  const handleAddBatchUsers = (newUsers: User[], updateExisting = true) => {
+    setUsers((prev) => {
+      const map = new Map<string, User>();
+      prev.forEach((u) => map.set(u.cedula, u));
+
+      newUsers.forEach((incoming) => {
+        const existing = map.get(incoming.cedula);
+        if (existing) {
+          if (updateExisting) {
+            map.set(incoming.cedula, {
+              ...existing,
+              name: incoming.name || existing.name,
+              phone: incoming.phone || existing.phone,
+              email: incoming.email || existing.email,
+              creditLimit: incoming.creditLimit ?? existing.creditLimit,
+              creditUsed: incoming.creditUsed ?? existing.creditUsed,
+              balance: incoming.balance ?? existing.balance,
+              loanQuota: incoming.loanQuota ?? existing.loanQuota,
+              loanQuotasTotal: incoming.loanQuotasTotal ?? existing.loanQuotasTotal,
+              dailyInterestRate: incoming.dailyInterestRate ?? existing.dailyInterestRate,
+              paymentTermDays: incoming.paymentTermDays ?? existing.paymentTermDays,
+              status: incoming.status ?? existing.status,
+            });
+          }
+        } else {
+          map.set(incoming.cedula, incoming);
+        }
+      });
+
+      const updated = Array.from(map.values());
+      secureStorage.setItem('nubank_users', updated);
+      return updated;
+    });
+
+    syncUsersToFirebase(newUsers);
   };
 
   // Delete user and ALL related client database info
@@ -454,6 +498,7 @@ export default function App() {
               onUpdateAdminCapital={(val) => setAdminCapital(val)}
               onUpdateUser={handleUpdateUser}
               onAddUser={handleAddUser}
+              onAddBatchUsers={handleAddBatchUsers}
               onDeleteUser={handleDeleteUser}
               onDeleteCaptchaLog={handleDeleteCaptchaLog}
               onUpdateUserStatus={handleUpdateUserStatus}
