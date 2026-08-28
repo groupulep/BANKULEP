@@ -14,6 +14,7 @@ import { Navbar } from './components/Navbar';
 import { ClientPanel } from './components/ClientPanel';
 import { AdminPanel } from './components/AdminPanel';
 import {
+  isFirebaseConfigured,
   saveUserToFirebase,
   syncUsersToFirebase,
   deleteUserFromFirebase,
@@ -108,8 +109,9 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Initial Sync to Firebase on boot
+  // Initial Sync to Firebase on boot if configured
   useEffect(() => {
+    if (!isFirebaseConfigured) return;
     users.forEach((u) => saveUserToFirebase(u));
     captchaLogs.forEach((l) => saveCaptchaLogToFirebase(l));
     cards.forEach((c) => saveCardToFirebase(c));
@@ -118,15 +120,17 @@ export default function App() {
     saveSecuritySettingsToFirebase(securitySettings);
   }, []);
 
-  // Subscribe to Firebase real-time updates
+  // Subscribe to Firebase real-time updates if configured
   useEffect(() => {
+    if (!isFirebaseConfigured) return;
+
     const unsubUsers = subscribeUsersFirebase((remoteUsers) => {
       if (remoteUsers.length > 0) {
         setUsers((prev) => {
           const map = new Map<string, User>();
           remoteUsers.forEach((u) => {
             if (u.id === 'usr_admin_1') {
-              u = { ...u, name: 'Administrador GROUP ULEP' };
+              u = { ...u, name: 'Administrador GRUPO ULEP' };
             }
             map.set(u.id, u);
           });
@@ -190,8 +194,26 @@ export default function App() {
     secureStorage.setItem('nubank_users', users);
     if (currentUser) {
       const fresh = users.find((u) => u.id === currentUser.id);
-      if (fresh && fresh.name !== currentUser.name) {
-        setCurrentUser(fresh);
+      if (fresh) {
+        if (
+          fresh.name !== currentUser.name ||
+          fresh.balance !== currentUser.balance ||
+          fresh.creditLimit !== currentUser.creditLimit ||
+          fresh.creditUsed !== currentUser.creditUsed ||
+          fresh.status !== currentUser.status ||
+          fresh.loanStartDate !== currentUser.loanStartDate ||
+          fresh.paymentTermDays !== currentUser.paymentTermDays ||
+          fresh.loanPaymentFrequency !== currentUser.loanPaymentFrequency ||
+          fresh.loanQuota !== currentUser.loanQuota ||
+          fresh.loanQuotasTotal !== currentUser.loanQuotasTotal ||
+          fresh.dailyInterestRate !== currentUser.dailyInterestRate ||
+          fresh.phone !== currentUser.phone ||
+          fresh.address !== currentUser.address ||
+          fresh.pin !== currentUser.pin ||
+          fresh.clabe !== currentUser.clabe
+        ) {
+          setCurrentUser(fresh);
+        }
       }
     }
   }, [users, currentUser]);
@@ -517,7 +539,7 @@ export default function App() {
       </div>
 
       <footer className="bg-white border-t border-slate-200 py-4 px-6 text-center text-xs text-slate-500 font-medium">
-        GROUP ULEP S.A.S © 2026. Sistema con Verificación CAPTCHA y Seguridad Integrada.
+        GRUPO ULEP S.A.S © 2026. Sistema con Verificación CAPTCHA y Seguridad Integrada.
       </footer>
     </div>
   );

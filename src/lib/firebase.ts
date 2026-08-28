@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
   collection,
@@ -9,45 +9,76 @@ import {
   getDocs,
   query,
   where,
-  writeBatch
+  writeBatch,
+  setLogLevel,
+  Firestore
 } from 'firebase/firestore';
 import { User, BankCard, Transaction, Cajita, LoanRequest, CaptchaLog, SecuritySettings } from '../types';
+
+// Silence verbose connection warnings when offline/local
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignore in environments where setLogLevel might not be available
+}
 
 export const isFirebaseConfigured = Boolean(
   import.meta.env.VITE_FIREBASE_API_KEY &&
   import.meta.env.VITE_FIREBASE_PROJECT_ID &&
-  !import.meta.env.VITE_FIREBASE_API_KEY.includes('Demo')
+  !import.meta.env.VITE_FIREBASE_API_KEY.includes('Demo') &&
+  !import.meta.env.VITE_FIREBASE_API_KEY.includes('your-firebase') &&
+  import.meta.env.VITE_FIREBASE_PROJECT_ID !== 'crediulep-app' &&
+  import.meta.env.VITE_FIREBASE_PROJECT_ID !== 'your-app'
 );
 
-// Standard Firebase Config with fallback
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDemoConfigForCrediULEP2026Key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "crediulep-app.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "crediulep-app",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "crediulep-app.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "109876543210",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:109876543210:web:abcdef1234567890"
+let cachedApp: FirebaseApp | null = null;
+let cachedDb: Firestore | null = null;
+
+export const getDb = (): Firestore | null => {
+  if (!isFirebaseConfigured) return null;
+  try {
+    if (!cachedDb) {
+      cachedApp = getApps().length > 0
+        ? getApp()
+        : initializeApp({
+            apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+            authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+            projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+            storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+            messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+            appId: import.meta.env.VITE_FIREBASE_APP_ID
+          });
+      cachedDb = getFirestore(cachedApp);
+    }
+    return cachedDb;
+  } catch (err) {
+    return null;
+  }
 };
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// Export db for backwards compatibility if needed, but safe
+export const db = isFirebaseConfigured ? getDb() : null;
 
 // Utility to handle error quietly if rules/permission block or offline
-const handleFirestoreError = (err: any, label: string) => {
-  if (err?.code === 'unavailable' || err?.message?.includes('unavailable')) {
-    // Expected in offline mode or pre-provisioned demo config
+const handleFirestoreError = (err: any, _label: string) => {
+  if (
+    err?.code === 'unavailable' ||
+    err?.message?.includes('unavailable') ||
+    err?.message?.includes('offline')
+  ) {
+    // Expected when offline or in standalone local storage mode
     return;
   }
-  console.warn(`[Firebase Firestore ${label} Note]:`, err?.message || err);
 };
 
 // --- USERS ---
 export const syncUsersToFirebase = async (users: User[]) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    const batch = writeBatch(db);
+    const batch = writeBatch(firestore);
     users.forEach((user) => {
-      const userRef = doc(db, 'users', user.id);
+      const userRef = doc(firestore, 'users', user.id);
       batch.set(userRef, user, { merge: true });
     });
     await batch.commit();
@@ -57,26 +88,28 @@ export const syncUsersToFirebase = async (users: User[]) => {
 };
 
 export const saveUserToFirebase = async (user: User) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'users', user.id), user, { merge: true });
+    await setDoc(doc(firestore, 'users', user.id), user, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveUser');
   }
 };
 
 export const deleteUserFromFirebase = async (userId: string) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
     // 1. Delete user document
-    await deleteDoc(doc(db, 'users', userId));
+    await deleteDoc(doc(firestore, 'users', userId));
 
     // 2. Cascade delete all user's transactions, loans, cards, cajitas from Firestore
     const collectionsToClean = ['transactions', 'loans', 'cards', 'cajitas'];
     for (const colName of collectionsToClean) {
-      const q = query(collection(db, colName), where('userId', '==', userId));
+      const q = query(collection(firestore, colName), where('userId', '==', userId));
       const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
+      const batch = writeBatch(firestore);
       snapshot.forEach((docSnap) => {
         batch.delete(docSnap.ref);
       });
@@ -90,10 +123,11 @@ export const deleteUserFromFirebase = async (userId: string) => {
 };
 
 export const subscribeUsersFirebase = (onData: (users: User[]) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      collection(db, 'users'),
+      collection(firestore, 'users'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: User[] = [];
@@ -111,28 +145,31 @@ export const subscribeUsersFirebase = (onData: (users: User[]) => void) => {
 
 // --- CAPTCHA LOGS ---
 export const saveCaptchaLogToFirebase = async (log: CaptchaLog) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'captchaLogs', log.id), log, { merge: true });
+    await setDoc(doc(firestore, 'captchaLogs', log.id), log, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveCaptchaLog');
   }
 };
 
 export const deleteCaptchaLogFromFirebase = async (logId: string) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await deleteDoc(doc(db, 'captchaLogs', logId));
+    await deleteDoc(doc(firestore, 'captchaLogs', logId));
   } catch (err) {
     handleFirestoreError(err, 'deleteCaptchaLog');
   }
 };
 
 export const subscribeCaptchaLogsFirebase = (onData: (logs: CaptchaLog[]) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      collection(db, 'captchaLogs'),
+      collection(firestore, 'captchaLogs'),
       (snapshot) => {
         const list: CaptchaLog[] = [];
         snapshot.forEach((d) => list.push(d.data() as CaptchaLog));
@@ -148,19 +185,21 @@ export const subscribeCaptchaLogsFirebase = (onData: (logs: CaptchaLog[]) => voi
 
 // --- CAPITAL ---
 export const saveAdminCapitalToFirebase = async (capital: number) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'settings', 'adminCapital'), { amount: capital, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(doc(firestore, 'settings', 'adminCapital'), { amount: capital, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveAdminCapital');
   }
 };
 
 export const subscribeAdminCapitalFirebase = (onData: (amount: number) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      doc(db, 'settings', 'adminCapital'),
+      doc(firestore, 'settings', 'adminCapital'),
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
@@ -179,19 +218,21 @@ export const subscribeAdminCapitalFirebase = (onData: (amount: number) => void) 
 
 // --- SECURITY SETTINGS ---
 export const saveSecuritySettingsToFirebase = async (settings: SecuritySettings) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'settings', 'security'), settings, { merge: true });
+    await setDoc(doc(firestore, 'settings', 'security'), settings, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveSecuritySettings');
   }
 };
 
 export const subscribeSecuritySettingsFirebase = (onData: (settings: SecuritySettings) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      doc(db, 'settings', 'security'),
+      doc(firestore, 'settings', 'security'),
       (snapshot) => {
         if (snapshot.exists()) {
           onData(snapshot.data() as SecuritySettings);
@@ -207,19 +248,21 @@ export const subscribeSecuritySettingsFirebase = (onData: (settings: SecuritySet
 
 // --- CARDS ---
 export const saveCardToFirebase = async (card: BankCard) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'cards', card.id), card, { merge: true });
+    await setDoc(doc(firestore, 'cards', card.id), card, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveCard');
   }
 };
 
 export const subscribeCardsFirebase = (onData: (cards: BankCard[]) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      collection(db, 'cards'),
+      collection(firestore, 'cards'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: BankCard[] = [];
@@ -237,19 +280,21 @@ export const subscribeCardsFirebase = (onData: (cards: BankCard[]) => void) => {
 
 // --- CAJITAS ---
 export const saveCajitaToFirebase = async (cajita: Cajita) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'cajitas', cajita.id), cajita, { merge: true });
+    await setDoc(doc(firestore, 'cajitas', cajita.id), cajita, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveCajita');
   }
 };
 
 export const subscribeCajitasFirebase = (onData: (cajitas: Cajita[]) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      collection(db, 'cajitas'),
+      collection(firestore, 'cajitas'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: Cajita[] = [];
@@ -266,19 +311,21 @@ export const subscribeCajitasFirebase = (onData: (cajitas: Cajita[]) => void) =>
 };
 
 export const saveLoanToFirebase = async (loan: LoanRequest) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'loans', loan.id), loan, { merge: true });
+    await setDoc(doc(firestore, 'loans', loan.id), loan, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveLoan');
   }
 };
 
 export const subscribeLoansFirebase = (onData: (loans: LoanRequest[]) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      collection(db, 'loans'),
+      collection(firestore, 'loans'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: LoanRequest[] = [];
@@ -296,19 +343,21 @@ export const subscribeLoansFirebase = (onData: (loans: LoanRequest[]) => void) =
 
 // --- TRANSACTIONS ---
 export const saveTransactionToFirebase = async (tx: Transaction) => {
-  if (!isFirebaseConfigured) return;
+  const firestore = getDb();
+  if (!firestore) return;
   try {
-    await setDoc(doc(db, 'transactions', tx.id), tx, { merge: true });
+    await setDoc(doc(firestore, 'transactions', tx.id), tx, { merge: true });
   } catch (err) {
     handleFirestoreError(err, 'saveTransaction');
   }
 };
 
 export const subscribeTransactionsFirebase = (onData: (txs: Transaction[]) => void) => {
-  if (!isFirebaseConfigured) return () => {};
+  const firestore = getDb();
+  if (!firestore) return () => {};
   try {
     return onSnapshot(
-      collection(db, 'transactions'),
+      collection(firestore, 'transactions'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: Transaction[] = [];

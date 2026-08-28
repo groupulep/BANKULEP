@@ -13,7 +13,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   if (!transaction) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(`Comprobante Nu - Folio: ${transaction.id} | Monto: $${transaction.amount.toFixed(2)}`);
+    navigator.clipboard.writeText(`Comprobante ULEP - Folio: ${transaction.id} | Monto: $${transaction.amount.toLocaleString('es-CO')} COP`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -30,13 +30,30 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
             <X className="w-5 h-5" />
           </button>
           
-          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-3 backdrop-blur-md border border-white/20">
-            <CheckCircle2 className="w-7 h-7 text-emerald-400" />
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <div className="inline-flex items-center px-4 py-2 bg-purple-950/60 border border-purple-700/50 rounded-2xl shadow-inner">
+              <img
+                src="/imagulep/1_1.png"
+                alt="CrediULEP Logo"
+                referrerPolicy="no-referrer"
+                className="h-9 w-auto max-w-[140px] object-contain drop-shadow"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('1_1.png')) {
+                    target.src = '/imagulep/1_1.png';
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-2 backdrop-blur-md border border-white/20">
+            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
           </div>
 
           <h3 className="text-xl font-bold font-sans tracking-tight">Comprobante de Operación</h3>
           <p className="text-xs text-purple-200 font-medium mt-1">
-            GROUP ULEP S.A.S. - Red de Pagos Digitales
+            GRUPO ULEP S.A.S. - Red de Pagos Digitales
           </p>
         </div>
 

@@ -8,7 +8,7 @@ export interface User {
   role: Role;
   cpfOrClabe: string;
   avatar?: string;
-  status: 'active' | 'blocked' | 'pending';
+  status?: 'active' | 'blocked' | 'pending'; // Puede persistirse o calcularse lógicamente
   pin: string; // password/NIP
   balance: number;
   creditLimit: number;
@@ -17,10 +17,44 @@ export interface User {
   clabe: string;
   createdAt: string;
   phone?: string;
+  address?: string;
   loanQuota?: number;
   loanQuotasTotal?: number;
   dailyInterestRate?: number;
   paymentTermDays?: number;
+  loanStartDate?: string; // Fecha específica de otorgamiento del crédito (YYYY-MM-DD)
+  loanPaymentFrequency?: 'quincenal' | 'mensual'; // Modalidad de pago calculada
+}
+
+export interface CreditInstallment {
+  number: number;
+  dueDate: string;
+  amount: number;
+  isPast: boolean;
+  isCurrent: boolean;
+  daysFromStart?: number;
+}
+
+export interface CreditStatusInfo {
+  computedStatus: 'active' | 'pending' | 'blocked'; // active = Al día, pending = En Mora, blocked = Cancelado/Liquidado
+  statusLabel: string;
+  statusReason: string;
+  statusColor: string;
+  badgeBg: string;
+  badgeText: string;
+  isOverdue: boolean;
+  startDate: string;
+  dueDate: string;
+  totalDays: number;
+  paymentTermDays: number;
+  elapsedDays: number;
+  remainingDays: number;
+  daysOverdue: number;
+  installmentsCount: number;
+  installmentAmount: number;
+  frequency: 'quincenal' | 'mensual';
+  frequencyLabel: string;
+  installments: CreditInstallment[];
 }
 
 export interface BankCard {

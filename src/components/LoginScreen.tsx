@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, CaptchaLog } from '../types';
 import { INITIAL_USERS } from '../data/mockData';
-import { Lock, ArrowRight, ShieldCheck, IdCard, Eye, EyeOff } from 'lucide-react';
+import { Lock, ArrowRight, IdCard, Eye, EyeOff } from 'lucide-react';
 
 interface LoginScreenProps {
   users: User[];
@@ -90,24 +90,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-purple-400/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-[#4c0677]/60 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Header with Brand */}
-      <header className="max-w-md w-full mx-auto flex items-center justify-between pt-4 sm:pt-6 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-white text-[#820AD1] flex items-center justify-center font-black text-2xl shadow-xl">
-            U
-          </div>
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-white leading-none">CrediULEP</h1>
-            <span className="text-[10px] text-purple-200 font-bold tracking-widest uppercase">
-              Banca Digital
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-xs font-semibold text-purple-100 shadow-xs">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
-          <span>Acceso Seguro</span>
-        </div>
+      {/* Top Header with Brand logo */}
+      <header className="max-w-md w-full mx-auto flex flex-col items-center justify-center pt-4 sm:pt-6 z-10">
+        <img
+          src="/imagulep/1_1.png"
+          alt="CrediULEP Logo"
+          referrerPolicy="no-referrer"
+          className="w-[200px] h-[200px] object-contain drop-shadow-xl"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (!target.src.includes('1_1.png')) {
+              target.src = '/imagulep/1_1.png';
+            }
+          }}
+        />
       </header>
 
       {/* Center Simple Login Card */}
@@ -205,7 +201,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       {/* Footer */}
       <footer className="max-w-md w-full mx-auto text-center text-xs text-purple-200/75 pb-2 z-10">
-        <p>© 2026 GROUP ULEP S.A.S. • Conexión Cifrada y Segura</p>
+        <p>© 2026 GRUPO ULEP S.A.S. • Conexión Cifrada y Segura</p>
       </footer>
     </div>
   );

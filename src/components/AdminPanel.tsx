@@ -26,10 +26,16 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Download,
-  Upload
+  Upload,
+  Calendar,
+  MapPin,
+  Phone,
+  Mail,
+  Info
 } from 'lucide-react';
 import { exportClientsToExcel, downloadBulkUploadTemplate } from '../utils/excelHelper';
 import { BulkUploadModal } from './BulkUploadModal';
+import { calculateCreditStatus, formatInputDate, formatReadableDate } from '../lib/creditCalculations';
 
 interface AdminPanelProps {
   users: User[];
@@ -91,34 +97,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     cedula: '',
     email: '',
     phone: '3169008561',
+    address: '',
     balance: 0,
-    creditLimit: 1000000,
+    creditLimit: 2000000,
+    creditUsed: 1000000,
+    loanStartDate: formatInputDate(new Date()),
+    paymentTermDays: 30,
+    loanPaymentFrequency: 'quincenal' as 'quincenal' | 'mensual',
     clabe: '',
     pin: '1234',
-    loanQuota: 1250000,
-    loanQuotasTotal: 12,
-    dailyInterestRate: 0.5,
-    paymentTermDays: 30,
+    dailyInterestRate: 0.05,
   });
 
   // Single Edit Modal State
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editTab, setEditTab] = useState<'status' | 'financial' | 'loan' | 'personal'>('status');
+  const [editTab, setEditTab] = useState<'credit' | 'schedule' | 'personal'>('credit');
   const [formData, setFormData] = useState({
     name: '',
     cedula: '',
     email: '',
     phone: '',
+    address: '',
     clabe: '',
     pin: '',
-    status: 'active' as 'active' | 'blocked' | 'pending',
     balance: 0,
     creditLimit: 0,
     creditUsed: 0,
-    loanQuota: 0,
-    loanQuotasTotal: 12,
-    dailyInterestRate: 0.5,
+    loanStartDate: '',
     paymentTermDays: 30,
+    loanPaymentFrequency: 'quincenal' as 'quincenal' | 'mensual',
+    dailyInterestRate: 0.05,
   });
 
   const toggleExpandUser = (userId: string) => {
@@ -141,12 +149,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleMarkPaymentAsPaid = (u: User, type: 'cuota' | 'total' | 'custom', amountToPay?: number) => {
+    const statusInfo = calculateCreditStatus(u);
+    const cuotaAmount = statusInfo.installmentAmount > 0 ? statusInfo.installmentAmount : Math.min(u.creditUsed, 1250000);
     const payAmount =
       type === 'total'
         ? u.creditUsed
         : amountToPay !== undefined
         ? amountToPay
-        : Math.min(u.creditUsed, u.loanQuota ?? 1250000);
+        : Math.min(u.creditUsed, cuotaAmount);
 
     if (payAmount <= 0) {
       setPaymentNotice(`El monto a pagar debe ser mayor a 0.`);
@@ -212,27 +222,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!addFormData.name || !addFormData.cedula) return;
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const newClabe = addFormData.clabe || `63818000${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+    const parsedLimit = Math.min(5000000, Math.max(0, Number(addFormData.creditLimit) || 1000000));
+    const parsedDebt = Math.min(parsedLimit, Math.max(0, Number(addFormData.creditUsed) || 0));
+    const parsedDays = Number(addFormData.paymentTermDays) || 30;
+    const freq = addFormData.loanPaymentFrequency || (parsedDays <= 15 ? 'quincenal' : 'mensual');
+    const daysPerInst = freq === 'quincenal' ? 15 : 30;
+    const calculatedInstallments = Math.max(1, Math.round(parsedDays / daysPerInst));
+    const calculatedQuota = parsedDebt > 0 ? Math.round(parsedDebt / calculatedInstallments) : 0;
+
     const newUser: User = {
       id: `usr_client_${Date.now()}`,
       name: addFormData.name,
       cedula: addFormData.cedula,
       email: addFormData.email || `cliente_${randomSuffix}@crediulep.com`,
       phone: addFormData.phone || '3169008561',
+      address: addFormData.address || '',
       clabe: newClabe,
       cpfOrClabe: newClabe,
       accountNumber: newClabe.slice(-10),
       pin: addFormData.pin || '1234',
       role: 'client',
-      status: 'active',
       balance: Number(addFormData.balance) || 0,
-      creditLimit: Number(addFormData.creditLimit) || 1000000,
-      creditUsed: 0,
+      creditLimit: parsedLimit,
+      creditUsed: parsedDebt,
       createdAt: new Date().toISOString().split('T')[0],
-      loanQuota: Number(addFormData.loanQuota) || 1250000,
-      loanQuotasTotal: Number(addFormData.loanQuotasTotal) || 12,
-      dailyInterestRate: Number(addFormData.dailyInterestRate) || 0.5,
-      paymentTermDays: Number(addFormData.paymentTermDays) || 30,
+      loanStartDate: addFormData.loanStartDate || formatInputDate(new Date()),
+      loanPaymentFrequency: freq,
+      loanQuota: calculatedQuota,
+      loanQuotasTotal: calculatedInstallments,
+      dailyInterestRate: Number(addFormData.dailyInterestRate) || 0.05,
+      paymentTermDays: parsedDays,
     };
+
     onAddUser(newUser);
     setIsAddingUser(false);
     setAddFormData({
@@ -240,57 +261,71 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       cedula: '',
       email: '',
       phone: '3169008561',
+      address: '',
       balance: 0,
-      creditLimit: 1000000,
+      creditLimit: 2000000,
+      creditUsed: 1000000,
+      loanStartDate: formatInputDate(new Date()),
+      paymentTermDays: 30,
+      loanPaymentFrequency: 'quincenal',
       clabe: '',
       pin: '1234',
-      loanQuota: 1250000,
-      loanQuotasTotal: 12,
-      dailyInterestRate: 0.5,
-      paymentTermDays: 30,
+      dailyInterestRate: 0.05,
     });
   };
 
   const openEditModal = (u: User) => {
     setEditingUser(u);
-    setEditTab('status');
+    setEditTab('credit');
+    const termDays = u.paymentTermDays || 30;
+    const freq = u.loanPaymentFrequency || (termDays <= 15 ? 'quincenal' : 'mensual');
     setFormData({
       name: u.name || '',
       cedula: u.cedula || '',
       email: u.email || '',
       phone: u.phone || '3169008561',
+      address: u.address || '',
       clabe: u.clabe || '',
       pin: u.pin || '1234',
-      status: u.status,
       balance: u.balance || 0,
-      creditLimit: u.creditLimit || 0,
+      creditLimit: Math.min(5000000, u.creditLimit || 0),
       creditUsed: u.creditUsed || 0,
-      loanQuota: u.loanQuota ?? 1250000,
-      loanQuotasTotal: u.loanQuotasTotal ?? 12,
-      dailyInterestRate: u.dailyInterestRate ?? 0.5,
-      paymentTermDays: u.paymentTermDays ?? 30,
+      loanStartDate: u.loanStartDate || u.createdAt || formatInputDate(new Date()),
+      paymentTermDays: termDays,
+      loanPaymentFrequency: freq,
+      dailyInterestRate: u.dailyInterestRate ?? 0.05,
     });
   };
 
   const handleSaveEditUser = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+    const parsedLimit = Math.min(5000000, Math.max(0, Number(formData.creditLimit) || 0));
+    const parsedDebt = Math.min(parsedLimit, Math.max(0, Number(formData.creditUsed) || 0));
+    const parsedDays = Number(formData.paymentTermDays) || 30;
+    const freq = formData.loanPaymentFrequency || (parsedDays <= 15 ? 'quincenal' : 'mensual');
+    const daysPerInst = freq === 'quincenal' ? 15 : 30;
+    const calculatedInstallments = Math.max(1, Math.round(parsedDays / daysPerInst));
+    const calculatedQuota = parsedDebt > 0 ? Math.round(parsedDebt / calculatedInstallments) : 0;
+
     const updated: User = {
       ...editingUser,
       name: formData.name,
       cedula: formData.cedula,
       email: formData.email,
       phone: formData.phone,
+      address: formData.address,
       clabe: formData.clabe,
       pin: formData.pin,
-      status: formData.status,
       balance: Number(formData.balance) || 0,
-      creditLimit: Number(formData.creditLimit) || 0,
-      creditUsed: Number(formData.creditUsed) || 0,
-      loanQuota: Number(formData.loanQuota) || 0,
-      loanQuotasTotal: Number(formData.loanQuotasTotal) || 0,
-      dailyInterestRate: Number(formData.dailyInterestRate) || 0,
-      paymentTermDays: Number(formData.paymentTermDays) || 0,
+      creditLimit: parsedLimit,
+      creditUsed: parsedDebt,
+      loanStartDate: formData.loanStartDate || editingUser.loanStartDate || formatInputDate(new Date()),
+      paymentTermDays: parsedDays,
+      loanPaymentFrequency: freq,
+      loanQuota: calculatedQuota,
+      loanQuotasTotal: calculatedInstallments,
+      dailyInterestRate: Number(formData.dailyInterestRate) || 0.05,
     };
     onUpdateUser(updated);
     setEditingUser(null);
@@ -312,9 +347,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const totalCreditAllocated = users.reduce((sum, u) => sum + (u.creditLimit || 0), 0);
   const totalDebtOutstanding = users.reduce((sum, u) => sum + (u.creditUsed || 0), 0);
   const totalClientsCount = users.filter((u) => u.role === 'client').length;
-  const activeClientsCount = users.filter((u) => u.role === 'client' && u.status === 'active').length;
-  const overdueClientsCount = users.filter((u) => u.role === 'client' && u.status === 'pending').length;
-  const blockedClientsCount = users.filter((u) => u.role === 'client' && u.status === 'blocked').length;
+  const activeClientsCount = users.filter((u) => u.role === 'client' && calculateCreditStatus(u).computedStatus === 'active').length;
+  const overdueClientsCount = users.filter((u) => u.role === 'client' && calculateCreditStatus(u).computedStatus === 'pending').length;
+  const blockedClientsCount = users.filter((u) => u.role === 'client' && calculateCreditStatus(u).computedStatus === 'blocked').length;
 
   const successfulCaptchas = captchaLogs.filter((c) => c.success).length;
   const captchaPassRate = captchaLogs.length > 0 ? Math.round((successfulCaptchas / captchaLogs.length) * 100) : 100;
@@ -326,8 +361,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.clabe.includes(userSearch) ||
-      u.cedula.includes(userSearch);
-    const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
+      u.cedula.includes(userSearch) ||
+      (u.address && u.address.toLowerCase().includes(userSearch.toLowerCase()));
+    const userComputedStatus = calculateCreditStatus(u).computedStatus;
+    const matchesStatus = statusFilter === 'all' || userComputedStatus === statusFilter;
     const matchesDebt =
       debtFilter === 'all' ||
       (debtFilter === 'with_debt' && u.creditUsed > 0) ||
@@ -641,10 +678,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <thead className="bg-purple-50/80 text-purple-950 font-black uppercase tracking-wider border-y border-purple-100">
                 <tr>
                   <th className="py-3 px-4">Cliente / Identificación</th>
-                  <th className="py-3 px-4">Saldo Disp.</th>
-                  <th className="py-3 px-4">Línea Crédito</th>
+                  <th className="py-3 px-4">Crédito & Fechas</th>
+                  <th className="py-3 px-4">Línea Cupo</th>
                   <th className="py-3 px-4">Deuda Actual</th>
-                  <th className="py-3 px-4">Estado</th>
+                  <th className="py-3 px-4">Estado Calculado</th>
                   <th className="py-3 px-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -656,80 +693,104 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-purple-50/40 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <p className="font-extrabold text-purple-950 text-sm">{u.name}</p>
-                        <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          CC: <strong className="text-purple-900 font-bold">{u.cedula}</strong> • CLABE: {u.clabe}
-                        </p>
-                      </td>
+                  filteredUsers.map((u) => {
+                    const statusInfo = calculateCreditStatus(u);
+                    return (
+                      <tr key={u.id} className="hover:bg-purple-50/40 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <p className="font-extrabold text-purple-950 text-sm">{u.name}</p>
+                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            CC: <strong className="text-purple-900 font-bold">{u.cedula}</strong> {u.phone ? `• Tel: ${u.phone}` : ''}
+                          </p>
+                          {u.address && (
+                            <p className="text-[10px] text-slate-400 truncate max-w-[200px]">
+                              📍 {u.address}
+                            </p>
+                          )}
+                        </td>
 
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        ${u.balance.toLocaleString('es-CO')}
-                      </td>
+                        <td className="py-3.5 px-4">
+                          <div className="space-y-0.5">
+                            <span className="inline-block font-bold text-purple-900 bg-purple-100/70 border border-purple-200 px-2 py-0.5 rounded-md text-[10px]">
+                              {statusInfo.frequencyLabel}
+                            </span>
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              Inicio: {statusInfo.startDate}
+                            </p>
+                            {u.creditUsed > 0 && (
+                              <p className="text-[10px] text-slate-500 font-mono">
+                                Vence: <strong className="text-purple-950">{statusInfo.dueDate}</strong>
+                              </p>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="py-3.5 px-4 font-mono font-bold text-purple-950">
-                        ${u.creditLimit.toLocaleString('es-CO')}
-                      </td>
+                        <td className="py-3.5 px-4 font-mono font-bold text-purple-950">
+                          ${u.creditLimit.toLocaleString('es-CO')}
+                        </td>
 
-                      <td className="py-3.5 px-4 font-mono font-bold">
-                        <span className={u.creditUsed > 0 ? 'text-amber-700' : 'text-slate-400'}>
-                          ${u.creditUsed.toLocaleString('es-CO')}
-                        </span>
-                      </td>
+                        <td className="py-3.5 px-4 font-mono font-bold">
+                          <span className={u.creditUsed > 0 ? 'text-amber-700 font-extrabold' : 'text-slate-400'}>
+                            ${u.creditUsed.toLocaleString('es-CO')}
+                          </span>
+                          {statusInfo.installmentAmount > 0 && (
+                            <p className="text-[10px] font-normal text-slate-500 font-sans mt-0.5">
+                              Cuota: ${statusInfo.installmentAmount.toLocaleString('es-CO')}
+                            </p>
+                          )}
+                        </td>
 
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                            u.status === 'active'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : u.status === 'blocked'
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {u.status === 'active' ? 'Activo' : u.status === 'blocked' ? 'Cancelado' : 'En Mora'}
-                        </span>
-                      </td>
+                        <td className="py-3.5 px-4">
+                          <div className="space-y-1">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusInfo.badgeBg} ${statusInfo.badgeText}`}
+                            >
+                              {statusInfo.statusLabel}
+                            </span>
+                            <p className="text-[10px] text-slate-500 max-w-[170px] leading-tight">
+                              {statusInfo.statusReason}
+                            </p>
+                          </div>
+                        </td>
 
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTab('payments');
-                              setExpandedUserIds({ [u.id]: true });
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
-                            title="Gestionar Pagos"
-                          >
-                            <CreditCard className="w-3.5 h-3.5 text-purple-800" />
-                            <span>Pagos</span>
-                          </button>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab('payments');
+                                setExpandedUserIds({ [u.id]: true });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                              title="Gestionar Pagos"
+                            >
+                              <CreditCard className="w-3.5 h-3.5 text-purple-800" />
+                              <span>Pagos</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(u)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-950 hover:bg-purple-900 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs"
-                            title="Editar Parámetros"
-                          >
-                            <SlidersHorizontal className="w-3.5 h-3.5 text-purple-300" />
-                            <span>Editar</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-950 hover:bg-purple-900 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs"
+                              title="Editar Parámetros y Crédito"
+                            >
+                              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-300" />
+                              <span>Editar</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => setUserToDelete(u)}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
-                            title="Eliminar Cliente"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            <button
+                              type="button"
+                              onClick={() => setUserToDelete(u)}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                              title="Eliminar Cliente"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -748,7 +809,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 Control de Pagos y Liquidaciones
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Registra la recepción de cuotas, abonos o cancelación total de deudas.
+                Registra la recepción de cuotas calculadas (quincenas o mensualidades), abonos o cancelación total.
               </p>
             </div>
 
@@ -773,7 +834,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             ) : (
               filteredUsers.map((u) => {
                 const isExpanded = !!expandedUserIds[u.id];
-                const cuotaAmount = Math.min(u.creditUsed, u.loanQuota ?? 1250000);
+                const statusInfo = calculateCreditStatus(u);
+                const cuotaAmount = statusInfo.installmentAmount > 0 ? statusInfo.installmentAmount : Math.min(u.creditUsed, 1250000);
                 const isDebtPaid = u.creditUsed <= 0;
 
                 return (
@@ -791,15 +853,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="flex items-center gap-2">
                             <h3 className="font-extrabold text-sm sm:text-base text-purple-950">{u.name}</h3>
                             <span
-                              className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                                u.status === 'active'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : u.status === 'blocked'
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
+                              className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusInfo.badgeBg} ${statusInfo.badgeText}`}
                             >
-                              {u.status === 'active' ? 'Activo' : u.status === 'blocked' ? 'Cancelado' : 'En Mora'}
+                              {statusInfo.statusLabel}
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
@@ -834,27 +890,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {/* Fila de Datos Rápidos */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-2.5 bg-white rounded-xl text-xs border border-purple-100">
                       <div>
-                        <p className="text-slate-400 font-bold text-[10px] uppercase">Deuda Pendiente</p>
+                        <p className="text-slate-400 font-bold text-[10px] uppercase">Plan de Pagos</p>
                         <p className="font-extrabold font-mono text-purple-950 mt-0.5">
-                          ${u.creditUsed.toLocaleString('es-CO')}
+                          {statusInfo.frequencyLabel}
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-400 font-bold text-[10px] uppercase">Cuota Mensual</p>
+                        <p className="text-slate-400 font-bold text-[10px] uppercase">Cuota Calculada</p>
                         <p className="font-extrabold font-mono text-purple-900 mt-0.5">
-                          ${(u.loanQuota ?? 1250000).toLocaleString('es-CO')}
+                          ${cuotaAmount.toLocaleString('es-CO')}
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-400 font-bold text-[10px] uppercase">Cupo Línea</p>
+                        <p className="text-slate-400 font-bold text-[10px] uppercase">Fecha Otorgamiento</p>
                         <p className="font-bold font-mono text-slate-700 mt-0.5">
-                          ${u.creditLimit.toLocaleString('es-CO')}
+                          {statusInfo.startDate}
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-400 font-bold text-[10px] uppercase">Plazo Ciclo</p>
-                        <p className="font-bold text-purple-900 mt-0.5">
-                          {u.paymentTermDays ?? 30} Días
+                        <p className="text-slate-400 font-bold text-[10px] uppercase">Fecha Límite / Vence</p>
+                        <p className={`font-bold font-mono mt-0.5 ${statusInfo.isOverdue ? 'text-rose-600 font-black' : 'text-purple-900'}`}>
+                          {statusInfo.dueDate}
                         </p>
                       </div>
                     </div>
@@ -868,16 +924,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             Registrar recepción de pago:
                           </h4>
                           <span className="text-[11px] font-bold text-slate-600">
-                            {isDebtPaid ? 'Esta cuenta está al día ($0)' : 'Saldo activo'}
+                            {isDebtPaid ? 'Esta cuenta está al día ($0)' : statusInfo.statusReason}
                           </span>
                         </div>
+
+                        {/* Tabla de cuotas calculadas */}
+                        {statusInfo.installments.length > 0 && !isDebtPaid && (
+                          <div className="bg-white p-3 rounded-xl border border-purple-100">
+                            <p className="text-[11px] font-bold text-purple-950 mb-2">Calendario de Cuotas Programadas:</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                              {statusInfo.installments.map((inst) => (
+                                <div
+                                  key={inst.number}
+                                  className="p-2 bg-purple-50/50 border border-purple-100 rounded-lg text-[11px] flex justify-between items-center"
+                                >
+                                  <div>
+                                    <p className="font-bold text-purple-950">Cuota #{inst.number} ({inst.daysFromStart}d)</p>
+                                    <p className="text-[10px] text-slate-500 font-mono">Vence: {inst.dueDate}</p>
+                                  </div>
+                                  <div className="text-right font-mono">
+                                    <p className="font-bold text-purple-900">${inst.amount.toLocaleString('es-CO')}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           {/* Opción 1: Cuota */}
                           <div className="bg-white p-3.5 rounded-2xl border border-purple-200 shadow-xs flex flex-col justify-between gap-2.5">
                             <div>
                               <div className="flex items-center justify-between mb-1">
-                                <span className="font-extrabold text-xs text-purple-950">1. Pago de Cuota</span>
+                                <span className="font-extrabold text-xs text-purple-950">1. Pago de Cuota ({statusInfo.frequency === 'quincenal' ? '15d' : '30d'})</span>
                                 <span
                                   className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
                                     !isDebtPaid ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
@@ -902,7 +981,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               }`}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>{!isDebtPaid ? 'Ya pagó Cuota' : 'Pagado'}</span>
+                              <span>{!isDebtPaid ? 'Registrar Pago Cuota' : 'Pagado'}</span>
                             </button>
                           </div>
 
@@ -1158,239 +1237,572 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* MODAL DE EDICIÓN INTEGRAL DE CLIENTE BIEN ORGANIZADO */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full border border-purple-100 shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
-            {/* Encabezado del Modal */}
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-purple-900">
-              <div>
-                <span className="text-[10px] uppercase font-black tracking-widest bg-purple-900 text-purple-200 px-2.5 py-0.5 rounded-full">
-                  Parámetros de Cuenta
-                </span>
-                <h2 className="text-lg font-black mt-1 text-white">{editingUser.name}</h2>
-                <p className="text-xs text-purple-200 font-mono">CC: {editingUser.cedula} • ID: {editingUser.id}</p>
+      {editingUser && (() => {
+        // Compute current simulated status for the editing form
+        const tempUser: User = {
+          ...editingUser,
+          creditUsed: Number(formData.creditUsed) || 0,
+          loanStartDate: formData.loanStartDate || editingUser.loanStartDate || formatInputDate(new Date()),
+          paymentTermDays: Number(formData.paymentTermDays) || 30,
+          loanPaymentFrequency: formData.loanPaymentFrequency,
+        };
+        const computedInfo = calculateCreditStatus(tempUser);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-2xl w-full border border-purple-100 shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+              {/* Encabezado del Modal */}
+              <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-purple-900">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-black tracking-widest bg-purple-900 text-purple-200 px-2.5 py-0.5 rounded-full">
+                      Edición de Cliente y Crédito
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${computedInfo.badgeBg} ${computedInfo.badgeText}`}>
+                      {computedInfo.statusLabel}
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black mt-1 text-white">{editingUser.name}</h2>
+                  <p className="text-xs text-purple-200 font-mono">CC: {editingUser.cedula} • ID: {editingUser.id}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setEditingUser(null)}
-                className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            {/* Pestañas internas del Modal */}
-            <div className="flex border-b border-purple-100 bg-purple-50/50 px-5 pt-3 gap-2 overflow-x-auto">
-              {[
-                { id: 'status', label: '1. Estado', icon: Lock },
-                { id: 'financial', label: '2. Saldos & Línea', icon: DollarSign },
-                { id: 'loan', label: '3. Préstamo & Cuotas', icon: CreditCard },
-                { id: 'personal', label: '4. Datos Personales', icon: Users },
-              ].map((t) => {
-                const Icon = t.icon;
-                const isSelected = editTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setEditTab(t.id as any)}
-                    className={`flex items-center gap-1.5 pb-2.5 px-3 text-xs font-black border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-                      isSelected
-                        ? 'border-purple-900 text-purple-950'
-                        : 'border-transparent text-slate-500 hover:text-purple-900'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{t.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+              {/* Banner de Estado Calculado Automáticamente */}
+              <div className="bg-purple-50/90 border-b border-purple-100 p-4 flex items-start gap-3">
+                <Info className="w-4 h-4 text-purple-800 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold text-purple-950">
+                    Estado Calculado Automáticamente:{' '}
+                    <span className="font-extrabold underline">{computedInfo.statusLabel}</span>
+                  </p>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    {computedInfo.statusReason}. El estado se define automáticamente según la fecha de inicio del crédito, el plazo asignado y el saldo adeudado.
+                  </p>
+                </div>
+              </div>
 
-            <form onSubmit={handleSaveEditUser} className="p-5 space-y-4 max-h-[65vh] overflow-y-auto">
-              {/* SECCIÓN 1: ESTADO */}
-              {editTab === 'status' && (
-                <div className="space-y-3">
-                  <div className="p-4 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-2.5">
-                    <label className="block text-xs font-black text-purple-950">
-                      Selecciona el Estado de la Cuenta:
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { value: 'active', label: 'Activo', desc: 'Acceso normal y crédito activo', color: 'bg-emerald-600 text-white' },
-                        { value: 'blocked', label: 'Cancelado', desc: 'Vista de solicitud de nuevo crédito', color: 'bg-rose-600 text-white' },
-                        { value: 'pending', label: 'En Mora', desc: 'Aviso de cobro y botones de pago', color: 'bg-amber-600 text-white' },
-                      ].map((st) => (
-                        <button
-                          key={st.value}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, status: st.value as any })}
-                          className={`p-3 rounded-xl text-left transition-all border cursor-pointer ${
-                            formData.status === st.value
-                              ? st.color + ' border-transparent shadow-xs scale-[1.02]'
-                              : 'bg-white text-slate-700 border-purple-100 hover:bg-purple-50'
-                          }`}
+              {/* Pestañas internas del Modal */}
+              <div className="flex border-b border-purple-100 bg-white px-5 pt-3 gap-2 overflow-x-auto">
+                {[
+                  { id: 'credit', label: '1. Parámetros del Crédito', icon: CreditCard },
+                  { id: 'schedule', label: '2. Calendario de Pagos', icon: Calendar },
+                  { id: 'personal', label: '3. Datos Personales', icon: Users },
+                ].map((t) => {
+                  const Icon = t.icon;
+                  const isSelected = editTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setEditTab(t.id as any)}
+                      className={`flex items-center gap-1.5 pb-2.5 px-3 text-xs font-black border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                        isSelected
+                          ? 'border-purple-900 text-purple-950'
+                          : 'border-transparent text-slate-500 hover:text-purple-900'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <form onSubmit={handleSaveEditUser} className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                {/* SECCIÓN 1: PARÁMETROS DEL CRÉDITO */}
+                {editTab === 'credit' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Fecha de Otorgamiento / Inicio *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.loanStartDate}
+                          onChange={(e) => setFormData({ ...formData, loanStartDate: e.target.value })}
+                          className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                        <p className="text-[10px] text-slate-400">Fecha exacta en que se entrega el crédito</p>
+                      </div>
+
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Modalidad de Pago *
+                        </label>
+                        <select
+                          value={formData.loanPaymentFrequency}
+                          onChange={(e) => setFormData({ ...formData, loanPaymentFrequency: e.target.value as any })}
+                          className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none cursor-pointer"
                         >
-                          <p className="font-extrabold text-xs">{st.label}</p>
-                          <p className="text-[10px] opacity-85 mt-0.5 leading-tight">{st.desc}</p>
-                        </button>
-                      ))}
+                          <option value="quincenal">Quincenal (Pagos cada 15 días)</option>
+                          <option value="mensual">Mensual (Pagos cada 30 días / al mes)</option>
+                        </select>
+                        <p className="text-[10px] text-slate-400">Determina el ciclo de cada cuota</p>
+                      </div>
+
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Plazo Total del Crédito (Días) *
+                        </label>
+                        <select
+                          value={formData.paymentTermDays}
+                          onChange={(e) => setFormData({ ...formData, paymentTermDays: parseInt(e.target.value) || 30 })}
+                          className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none cursor-pointer"
+                        >
+                          <option value={15}>15 Días (1 Quincena)</option>
+                          <option value={30}>30 Días (2 Quincenas o 1 Mes)</option>
+                          <option value={45}>45 Días (3 Quincenas)</option>
+                          <option value={60}>60 Días (4 Quincenas o 2 Meses)</option>
+                          <option value={90}>90 Días (6 Quincenas o 3 Meses)</option>
+                        </select>
+                        <p className="text-[10px] text-slate-400">Duración total pactada</p>
+                      </div>
+
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Deuda Actual / Saldo Deudor ($ COP)
+                        </label>
+                        <input
+                          type="number"
+                          max="5000000"
+                          value={formData.creditUsed}
+                          onChange={(e) => setFormData({ ...formData, creditUsed: parseFloat(e.target.value) || 0 })}
+                          className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-amber-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                        <p className="text-[10px] text-slate-400">Si es 0, el crédito se considerará Cancelado</p>
+                      </div>
+
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Cupo Línea de Crédito (Máx. $5.000.000 COP)
+                        </label>
+                        <input
+                          type="number"
+                          max="5000000"
+                          value={formData.creditLimit}
+                          onChange={(e) => setFormData({ ...formData, creditLimit: Math.min(5000000, parseFloat(e.target.value) || 0) })}
+                          className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Tasa de Interés Diaria (%)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.dailyInterestRate}
+                          onChange={(e) => setFormData({ ...formData, dailyInterestRate: parseFloat(e.target.value) || 0 })}
+                          className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Resumen Calculado en Tiempo Real */}
+                    <div className="p-3.5 bg-gradient-to-r from-purple-900 to-indigo-950 text-white rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-purple-200">Cálculo Automático de Cuotas:</span>
+                        <span className="font-mono bg-white/10 px-2 py-0.5 rounded-md font-bold">
+                          {computedInfo.frequencyLabel}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-1 border-t border-white/10">
+                        <div>
+                          <p className="text-[10px] text-purple-300">Cuota Estimada</p>
+                          <p className="font-extrabold font-mono text-sm">${computedInfo.installmentAmount.toLocaleString('es-CO')}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-purple-300">Fecha Vencimiento</p>
+                          <p className="font-extrabold font-mono text-xs">{computedInfo.dueDate}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-purple-300">Días Transcurridos</p>
+                          <p className="font-extrabold font-mono text-xs">{computedInfo.elapsedDays} / {computedInfo.paymentTermDays} días</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SECCIÓN 2: CALENDARIO Y CUOTAS CALCULADAS */}
+                {editTab === 'schedule' && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-600 font-medium">
+                      El sistema calcula automáticamente cada fecha de pago sumando los períodos (15 o 30 días) a partir de la fecha de inicio ({computedInfo.startDate}):
+                    </p>
+
+                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                      {computedInfo.installments.length === 0 ? (
+                        <p className="text-xs text-slate-400 py-4 text-center">No hay cuotas activas (deuda en $0).</p>
+                      ) : (
+                        computedInfo.installments.map((inst) => (
+                          <div
+                            key={inst.number}
+                            className="p-3 bg-purple-50/60 border border-purple-100 rounded-xl flex items-center justify-between text-xs"
+                          >
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-purple-950">
+                                  Cuota #{inst.number} ({inst.daysFromStart} días del crédito)
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                                    inst.isPast
+                                      ? 'bg-rose-100 text-rose-800'
+                                      : 'bg-emerald-100 text-emerald-800'
+                                  }`}
+                                >
+                                  {inst.isPast ? 'Vencida' : 'Al día'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 font-mono">
+                                Vencimiento: <strong className="text-purple-900">{inst.dueDate}</strong>
+                              </p>
+                            </div>
+                            <div className="text-right font-mono">
+                              <p className="text-sm font-black text-purple-950">
+                                ${inst.amount.toLocaleString('es-CO')}
+                              </p>
+                              <p className="text-[10px] text-slate-400">Valor de cuota</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* SECCIÓN 3: DATOS PERSONALES */}
+                {editTab === 'personal' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Nombre Completo *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Cédula / Identificación *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.cedula}
+                        onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Teléfono Móvil</label>
+                      <input
+                        type="text"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="3169008561"
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Dirección de Residencia / Ubicación</label>
+                      <input
+                        type="text"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        placeholder="Ej. Calle 45 # 12-34, Bogotá"
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Clave / NIP (4 dígitos)</label>
+                      <input
+                        type="text"
+                        value={formData.pin}
+                        onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Saldo Disponible en Cuenta ($ COP)</label>
+                      <input
+                        type="number"
+                        value={formData.balance}
+                        onChange={(e) => setFormData({ ...formData, balance: parseFloat(e.target.value) || 0 })}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-700">Cuenta CLABE / Cuenta Bancaria</label>
+                      <input
+                        type="text"
+                        value={formData.clabe}
+                        onChange={(e) => setFormData({ ...formData, clabe: e.target.value })}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Botones de acción del Modal */}
+                <div className="flex items-center justify-between gap-3 pt-4 border-t border-purple-100">
+                  <button
+                    type="button"
+                    onClick={() => setUserToDelete(editingUser)}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Eliminar Cliente</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingUser(null)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-purple-950 hover:bg-purple-900 text-white font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Guardar Parámetros</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL AGREGAR CLIENTE CON CÁLCULO DE CRÉDITO Y FECHAS */}
+      {isAddingUser && (() => {
+        const tempAddUser: User = {
+          id: 'temp_add',
+          name: addFormData.name || 'Cliente Nuevo',
+          cedula: addFormData.cedula || '0000000000',
+          email: addFormData.email || '',
+          role: 'client',
+          balance: addFormData.balance,
+          creditLimit: addFormData.creditLimit,
+          creditUsed: addFormData.creditUsed,
+          clabe: '012180000000000000',
+          cpfOrClabe: addFormData.cedula || '',
+          accountNumber: '•••• 0000',
+          createdAt: formatInputDate(new Date()),
+          pin: addFormData.pin,
+          loanStartDate: addFormData.loanStartDate,
+          paymentTermDays: addFormData.paymentTermDays,
+          loanPaymentFrequency: addFormData.loanPaymentFrequency,
+        };
+        const addComputedInfo = calculateCreditStatus(tempAddUser);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-2xl w-full border border-purple-100 shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+              <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-purple-900">
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-widest bg-purple-900 text-purple-200 px-2.5 py-0.5 rounded-full">
+                    Alta de Usuario
+                  </span>
+                  <h2 className="text-lg font-black mt-1">Registrar Nuevo Cliente y Crédito</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingUser(false)}
+                  className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateUser} className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="space-y-4">
+                  {/* SECCIÓN 1: DATOS PERSONALES */}
+                  <div>
+                    <h3 className="text-xs font-black text-purple-950 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-purple-800" />
+                      1. Datos Personales
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Nombre Completo *</label>
+                        <input
+                          type="text"
+                          required
+                          value={addFormData.name}
+                          onChange={(e) => setAddFormData({ ...addFormData, name: e.target.value })}
+                          placeholder="Ej. Carlos Martínez"
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Cédula / Documento *</label>
+                        <input
+                          type="text"
+                          required
+                          value={addFormData.cedula}
+                          onChange={(e) => setAddFormData({ ...addFormData, cedula: e.target.value })}
+                          placeholder="Ej. 1098765432"
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Teléfono Móvil</label>
+                        <input
+                          type="text"
+                          value={addFormData.phone}
+                          onChange={(e) => setAddFormData({ ...addFormData, phone: e.target.value })}
+                          placeholder="3169008561"
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Correo Electrónico</label>
+                        <input
+                          type="email"
+                          value={addFormData.email}
+                          onChange={(e) => setAddFormData({ ...addFormData, email: e.target.value })}
+                          placeholder="cliente@crediulep.com"
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Dirección de Residencia</label>
+                        <input
+                          type="text"
+                          value={addFormData.address}
+                          onChange={(e) => setAddFormData({ ...addFormData, address: e.target.value })}
+                          placeholder="Ej. Cra 15 # 45-67, Bogotá"
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Clave NIP (4 dígitos)</label>
+                        <input
+                          type="text"
+                          value={addFormData.pin}
+                          onChange={(e) => setAddFormData({ ...addFormData, pin: e.target.value })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Saldo Inicial en Cuenta ($ COP)</label>
+                        <input
+                          type="number"
+                          value={addFormData.balance}
+                          onChange={(e) => setAddFormData({ ...addFormData, balance: parseFloat(e.target.value) || 0 })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SECCIÓN 2: PARÁMETROS DEL CRÉDITO */}
+                  <div className="pt-3 border-t border-purple-100">
+                    <h3 className="text-xs font-black text-purple-950 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-purple-800" />
+                      2. Condiciones del Crédito
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Fecha de Otorgamiento *</label>
+                        <input
+                          type="date"
+                          required
+                          value={addFormData.loanStartDate}
+                          onChange={(e) => setAddFormData({ ...addFormData, loanStartDate: e.target.value })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Modalidad de Pago</label>
+                        <select
+                          value={addFormData.loanPaymentFrequency}
+                          onChange={(e) => setAddFormData({ ...addFormData, loanPaymentFrequency: e.target.value as any })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none cursor-pointer"
+                        >
+                          <option value="quincenal">Quincenal (Pagos cada 15 días)</option>
+                          <option value="mensual">Mensual (Pagos cada 30 días / al mes)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Plazo de Pago (Ciclo)</label>
+                        <select
+                          value={addFormData.paymentTermDays}
+                          onChange={(e) => setAddFormData({ ...addFormData, paymentTermDays: parseInt(e.target.value) || 30 })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none cursor-pointer"
+                        >
+                          <option value={15}>15 Días (1 Quincena)</option>
+                          <option value={30}>30 Días (2 Quincenas o 1 Mes)</option>
+                          <option value={45}>45 Días (3 Quincenas)</option>
+                          <option value={60}>60 Días (4 Quincenas o 2 Meses)</option>
+                          <option value={90}>90 Días (6 Quincenas o 3 Meses)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Monto Otorgado / Deuda Inicial ($ COP)</label>
+                        <input
+                          type="number"
+                          max="5000000"
+                          value={addFormData.creditUsed}
+                          onChange={(e) => setAddFormData({ ...addFormData, creditUsed: parseFloat(e.target.value) || 0 })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-amber-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Cupo Línea de Crédito (Máx. $5.000.000 COP)</label>
+                        <input
+                          type="number"
+                          max="5000000"
+                          value={addFormData.creditLimit}
+                          onChange={(e) => setAddFormData({ ...addFormData, creditLimit: Math.min(5000000, parseFloat(e.target.value) || 0) })}
+                          className="w-full p-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Resumen Calculado en Vivo */}
+                  <div className="p-3 bg-purple-950 text-white rounded-2xl space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-purple-200">Plan Calculado:</span>
+                      <span className="font-mono bg-white/10 px-2 py-0.5 rounded font-bold">{addComputedInfo.frequencyLabel}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs pt-1 border-t border-white/10">
+                      <span className="text-purple-300">Cuota: <strong>${addComputedInfo.installmentAmount.toLocaleString('es-CO')}</strong></span>
+                      <span className="text-purple-300">Vence: <strong>{addComputedInfo.dueDate}</strong></span>
                     </div>
                   </div>
                 </div>
-              )}
 
-              {/* SECCIÓN 2: SALDOS Y LÍNEA */}
-              {editTab === 'financial' && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Saldo Disponible ($ COP)</label>
-                    <input
-                      type="number"
-                      value={formData.balance}
-                      onChange={(e) => setFormData({ ...formData, balance: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Límite Crédito ($ COP)</label>
-                    <input
-                      type="number"
-                      value={formData.creditLimit}
-                      onChange={(e) => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Deuda Utilizada ($ COP)</label>
-                    <input
-                      type="number"
-                      value={formData.creditUsed}
-                      onChange={(e) => setFormData({ ...formData, creditUsed: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* SECCIÓN 3: PRÉSTAMO Y CUOTAS */}
-              {editTab === 'loan' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Valor de Cuota Mensual ($ COP)</label>
-                    <input
-                      type="number"
-                      value={formData.loanQuota}
-                      onChange={(e) => setFormData({ ...formData, loanQuota: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-purple-950 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Plazo en Días (Ciclo)</label>
-                    <input
-                      type="number"
-                      value={formData.paymentTermDays}
-                      onChange={(e) => setFormData({ ...formData, paymentTermDays: parseInt(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Interés Diario (% / día)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.dailyInterestRate}
-                      onChange={(e) => setFormData({ ...formData, dailyInterestRate: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Total de Cuotas</label>
-                    <input
-                      type="number"
-                      value={formData.loanQuotasTotal}
-                      onChange={(e) => setFormData({ ...formData, loanQuotasTotal: parseInt(e.target.value) || 0 })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* SECCIÓN 4: DATOS PERSONALES */}
-              {editTab === 'personal' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Nombre Completo</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Cédula / Identificación</label>
-                    <input
-                      type="text"
-                      value={formData.cedula}
-                      onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Correo Electrónico</label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Teléfono Móvil</label>
-                    <input
-                      type="text"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Clave / NIP (4 dígitos)</label>
-                    <input
-                      type="text"
-                      value={formData.pin}
-                      onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                  <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-700">Cuenta CLABE</label>
-                    <input
-                      type="text"
-                      value={formData.clabe}
-                      onChange={(e) => setFormData({ ...formData, clabe: e.target.value })}
-                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Botones de acción del Modal */}
-              <div className="flex items-center justify-between gap-3 pt-4 border-t border-purple-100">
-                <button
-                  type="button"
-                  onClick={() => setUserToDelete(editingUser)}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Eliminar Cliente</span>
-                </button>
-
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-purple-100">
                   <button
                     type="button"
-                    onClick={() => setEditingUser(null)}
+                    onClick={() => setIsAddingUser(false)}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     Cancelar
@@ -1399,138 +1811,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="submit"
                     className="px-5 py-2 bg-purple-950 hover:bg-purple-900 text-white font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Guardar Cambios</span>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Crear Cliente</span>
                   </button>
                 </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL AGREGAR CLIENTE */}
-      {isAddingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full border border-purple-100 shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-purple-900">
-              <div>
-                <span className="text-[10px] uppercase font-black tracking-widest bg-purple-900 text-purple-200 px-2.5 py-0.5 rounded-full">
-                  Alta de Usuario
-                </span>
-                <h2 className="text-lg font-black mt-1">Registrar Nuevo Cliente</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddingUser(false)}
-                className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              </form>
             </div>
-
-            <form onSubmit={handleCreateUser} className="p-5 space-y-3.5 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Nombre Completo *</label>
-                  <input
-                    type="text"
-                    required
-                    value={addFormData.name}
-                    onChange={(e) => setAddFormData({ ...addFormData, name: e.target.value })}
-                    placeholder="Ej. Carlos Martínez"
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Cédula / Documento *</label>
-                  <input
-                    type="text"
-                    required
-                    value={addFormData.cedula}
-                    onChange={(e) => setAddFormData({ ...addFormData, cedula: e.target.value })}
-                    placeholder="Ej. 1098765432"
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Correo Electrónico</label>
-                  <input
-                    type="email"
-                    value={addFormData.email}
-                    onChange={(e) => setAddFormData({ ...addFormData, email: e.target.value })}
-                    placeholder="cliente@crediulep.com"
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Teléfono</label>
-                  <input
-                    type="text"
-                    value={addFormData.phone}
-                    onChange={(e) => setAddFormData({ ...addFormData, phone: e.target.value })}
-                    placeholder="3169008561"
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Límite Crédito ($ COP)</label>
-                  <input
-                    type="number"
-                    value={addFormData.creditLimit}
-                    onChange={(e) => setAddFormData({ ...addFormData, creditLimit: parseFloat(e.target.value) || 0 })}
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Cuota Mensual ($ COP)</label>
-                  <input
-                    type="number"
-                    value={addFormData.loanQuota}
-                    onChange={(e) => setAddFormData({ ...addFormData, loanQuota: parseFloat(e.target.value) || 0 })}
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-purple-950 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Clave NIP (4 dígitos)</label>
-                  <input
-                    type="text"
-                    value={addFormData.pin}
-                    onChange={(e) => setAddFormData({ ...addFormData, pin: e.target.value })}
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Saldo Inicial ($ COP)</label>
-                  <input
-                    type="number"
-                    value={addFormData.balance}
-                    onChange={(e) => setAddFormData({ ...addFormData, balance: parseFloat(e.target.value) || 0 })}
-                    className="w-full p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-700 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-purple-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingUser(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-purple-950 hover:bg-purple-900 text-white font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Crear Cliente</span>
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL EDITAR CAPITAL */}
       {isEditingCapital && (
