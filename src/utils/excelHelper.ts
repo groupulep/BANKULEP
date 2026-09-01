@@ -299,6 +299,9 @@ export const parseBulkClientsFile = async (file: File): Promise<ParsedClientRow[
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const newClabe = `63818000${Math.floor(1000000000 + Math.random() * 9000000000)}`;
 
+    const todayStr = formatInputDate(new Date());
+    const loanPaymentFrequency: 'quincenal' | 'mensual' = paymentTermDays <= 15 ? 'quincenal' : 'mensual';
+
     const user: User = {
       id: `usr_client_${Date.now()}_${index}_${randomSuffix}`,
       name: String(name).trim(),
@@ -314,12 +317,19 @@ export const parseBulkClientsFile = async (file: File): Promise<ParsedClientRow[
       balance,
       creditLimit,
       creditUsed,
-      createdAt: new Date().toISOString().split('T')[0],
+      loanStartDate: todayStr,
+      paymentTermDays,
+      loanPaymentFrequency,
+      createdAt: todayStr,
       loanQuota,
       loanQuotasTotal,
       dailyInterestRate,
-      paymentTermDays,
     };
+
+    const statusInfo = calculateCreditStatus(user);
+    if (!normalized['estado'] && !normalized['status']) {
+      user.status = statusInfo.computedStatus;
+    }
 
     results.push({
       isValid: true,

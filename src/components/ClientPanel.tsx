@@ -69,7 +69,6 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
   const [requestDays, setRequestDays] = useState<number>(30); // 15 o 30 días (al mes)
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [extendDaysSelected, setExtendDaysSelected] = useState<number>(15);
-  const [showPayOptions, setShowPayOptions] = useState(true);
   const [showCharacteristics, setShowCharacteristics] = useState(false);
   const [loanSuccess, setLoanSuccess] = useState(false);
 
@@ -84,11 +83,14 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
 
     const newBalance = user.balance - payAmt;
     const newCreditUsed = Math.max(0, currentDebt - payAmt);
+    const updatedStatusInfo = calculateCreditStatus({ ...user, creditUsed: newCreditUsed });
+    const newStatus: 'active' | 'blocked' | 'pending' = newCreditUsed <= 0 ? 'blocked' : (updatedStatusInfo.isOverdue ? 'pending' : 'active');
 
     const updatedUser: User = {
       ...user,
       balance: newBalance,
-      creditUsed: newCreditUsed
+      creditUsed: newCreditUsed,
+      status: newStatus
     };
 
     onUpdateUser(updatedUser);
@@ -143,38 +145,17 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
 
   // VISTA ESPECIAL CUANDO EL CLIENTE ESTÁ CANCELADO O SIN DEUDA ($0)
   if (creditStatus.computedStatus === 'blocked' || !hasActiveDebt) {
-    const estimatedBlockedQuota = requestDays === 15 
-      ? Math.round(requestAmount * 1.025)
-      : Math.round(requestAmount * 1.05);
-
     return (
       <div className="max-w-xl mx-auto space-y-6 py-6 pb-12 animate-fade-in-up">
         {/* Título simple y centrado */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold font-mono">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Sin Deuda Pendiente ($0 COP)</span>
-          </div>
           <h1 className="text-2xl sm:text-3xl font-black text-purple-950 tracking-tight">
             Solicita otro crédito
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-md mx-auto">
-            Hola <span className="font-bold text-purple-950">{user.name}</span>, calcula el monto (máximo ${maxAvailableCredit.toLocaleString('es-CO')} COP) y el plazo deseado en GRUPO ULEP S.A.S.
-          </p>
         </div>
 
         {/* Simulador de Crédito */}
         <div className="bg-white p-6 sm:p-7 rounded-3xl border border-purple-100 shadow-md space-y-5 animate-scale-in">
-          <div className="flex items-center justify-between border-b border-purple-50 pb-3">
-            <h2 className="text-sm font-extrabold text-purple-950 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-700" />
-              Simulador de Crédito (Cupo: ${maxAvailableCredit.toLocaleString('es-CO')})
-            </h2>
-            <span className="text-[11px] font-bold text-purple-900 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full font-mono">
-              WhatsApp Directo
-            </span>
-          </div>
-
           {loanSuccess && (
             <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-semibold animate-scale-in">
               <div className="flex items-center gap-2">
@@ -191,12 +172,12 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleRequestNewLoan} className="space-y-4">
-            {/* Monto a solicitar */}
-            <div className="space-y-2 p-4 bg-purple-50/70 border border-purple-100 rounded-2xl">
+          <form onSubmit={handleRequestNewLoan} className="space-y-6">
+            {/* Línea de Monto a solicitar */}
+            <div className="space-y-3 p-5 sm:p-6 bg-purple-50/80 border border-purple-100 rounded-3xl">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Monto a solicitar:</span>
-                <span className="font-black font-mono text-purple-950 text-base sm:text-lg">
+                <span className="font-bold text-slate-700 uppercase tracking-wider text-xs sm:text-sm">Monto a solicitar:</span>
+                <span className="font-black font-mono text-purple-950 text-lg sm:text-2xl">
                   ${requestAmount.toLocaleString('es-CO')} COP
                 </span>
               </div>
@@ -207,144 +188,34 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
                 step="50000"
                 value={requestAmount}
                 onChange={(e) => setRequestAmount(Number(e.target.value))}
-                className="w-full h-2.5 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-800"
+                className="w-full h-3 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-800"
               />
-              <div className="flex justify-between text-[10px] text-slate-400 font-mono font-semibold">
+              <div className="flex justify-between text-xs text-slate-400 font-mono font-bold pt-1">
                 <span>$100.000</span>
-                <span>Máx. ${maxAvailableCredit.toLocaleString('es-CO')}</span>
+                <span>Máximo ${maxAvailableCredit.toLocaleString('es-CO')} COP</span>
               </div>
             </div>
 
-            {/* Plazo y Cuota */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="block text-[11px] font-bold text-purple-950">
-                  Modalidad de pago:
-                </label>
-                <select
-                  value={requestDays}
-                  onChange={(e) => setRequestDays(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-xs font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-700 cursor-pointer"
-                >
-                  <option value={15}>Pago a 15 Días (Quincenal)</option>
-                  <option value={30}>Pago al Mes (30 Días)</option>
-                </select>
-              </div>
-
-              <div className="p-3 bg-purple-900 text-white rounded-xl text-center flex flex-col justify-center shadow-xs">
-                <span className="text-[10px] uppercase font-bold text-purple-200 block">
-                  {requestDays === 15 ? 'Cuota a 15 días aprox:' : 'Cuota mensual aprox:'}
-                </span>
-                <span className="text-sm sm:text-base font-black font-mono text-emerald-300 block mt-0.5">
-                  ${estimatedBlockedQuota.toLocaleString('es-CO')} COP
-                </span>
-              </div>
-            </div>
-
-            {/* Botón enviar */}
+            {/* Botón de solicitar grande */}
             <button
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold py-4 px-4 rounded-2xl text-sm transition-all duration-200 shadow-md flex items-center justify-center gap-2 cursor-pointer hover:shadow-lg mt-2"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black py-4 sm:py-5 px-6 rounded-2xl text-base sm:text-lg transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-3 cursor-pointer"
             >
-              <Send className="w-4 h-4 shrink-0" />
-              <span>Solicitar (${requestAmount.toLocaleString('es-CO')} - {requestDays === 15 ? '15 Días' : 'Al Mes'})</span>
+              <Send className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+              <span>Solicitar ${requestAmount.toLocaleString('es-CO')} COP</span>
             </button>
           </form>
-
-          {/* Nota directa de WhatsApp */}
-          <div className="pt-2 text-center">
-            <a
-              href={`https://wa.me/573169008561?text=${encodeURIComponent(`Hola GRUPO ULEP S.A.S., deseo solicitar un nuevo crédito por $${requestAmount.toLocaleString('es-CO')} a ${requestDays === 15 ? '15 días' : 'al mes'}. Cédula: ${user.cedula} - Nombre: ${user.name}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-purple-900 hover:text-purple-950 font-bold hover:underline"
-            >
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-              <span>O comunícate directo al WhatsApp (+57 3169008561)</span>
-            </a>
-          </div>
         </div>
 
-        {/* Resumen Métricas */}
-        <div className="grid grid-cols-3 gap-2 text-center animate-fade-in-up">
-          <div className="bg-white p-3 rounded-xl border border-purple-100 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-500 uppercase block">Línea Máx.</span>
-            <span className="text-xs font-black font-mono text-purple-950 block mt-0.5">
-              ${user.creditLimit.toLocaleString('es-CO')}
-            </span>
-          </div>
-
-          <div className="bg-white p-3 rounded-xl border border-purple-100 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-500 uppercase block">Estado</span>
-            <span className="text-xs font-black font-mono text-emerald-700 block mt-0.5">
-              Al Día ($0)
-            </span>
-          </div>
-
-          <div className="bg-white p-3 rounded-xl border border-purple-100 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-500 uppercase block">Plazo Disp.</span>
-            <span className="text-xs font-black text-purple-950 block mt-0.5">
-              15 a 30 Días
-            </span>
-          </div>
-        </div>
-
-        {/* Movimientos */}
-        <div className="bg-white p-4 rounded-2xl border border-purple-100 shadow-xs space-y-2.5 transition-all duration-300">
-          <div className="flex items-center justify-between border-b border-purple-50 pb-2">
-            <h3 className="text-xs font-extrabold text-purple-950 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-purple-800" />
-              Movimientos
-            </h3>
-            <span className="text-[10px] text-slate-400 font-medium">
-              {userTransactions.length}
-            </span>
-          </div>
-
-          {userTransactions.length === 0 ? (
-            <p className="text-xs text-slate-400 py-2 text-center">Sin movimientos.</p>
-          ) : (
-            <div className="divide-y divide-purple-50 text-xs">
-              {userTransactions.slice(0, 4).map((tx) => (
-                <div
-                  key={tx.id}
-                  className="py-2 flex items-center justify-between hover:bg-purple-50/50 px-1 rounded-lg transition-colors"
-                >
-                  <div>
-                    <p className="font-bold text-purple-950 text-xs">{tx.description}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">{tx.date}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold font-mono text-purple-950 text-xs">
-                      ${tx.amount.toLocaleString('es-CO')}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedReceiptTx(tx)}
-                      className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-900 font-bold rounded text-[10px] cursor-pointer transition-all"
-                    >
-                      Recibo
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Soporte */}
-        <div className="flex items-center justify-between p-3 bg-purple-50/70 rounded-xl border border-purple-100 text-xs">
-          <span className="text-slate-600 font-medium">Soporte GRUPO ULEP S.A.S.</span>
-          <a
-            href={`https://wa.me/573169008561?text=${encodeURIComponent(`Hola GRUPO ULEP S.A.S., soporte - Cédula: ${user.cedula}`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-lg text-[11px] transition-all shadow-2xs"
-          >
-            <MessageCircle className="w-3 h-3" />
-            <span>3169008561</span>
-          </a>
-        </div>
+        {/* Pie de página sencillo */}
+        <footer className="pt-6 pb-2 border-t border-purple-100/80 text-center space-y-1.5 text-xs text-slate-500">
+          <p className="font-semibold text-purple-950/80">
+            © {new Date().getFullYear()} GRUPO ULEP S.A.S. Todos los derechos reservados.
+          </p>
+          <p className="text-[11px] text-slate-400">
+            Créditos responsables y seguros • Vigilado y protegido
+          </p>
+        </footer>
 
         <ReceiptModal
           transaction={selectedReceiptTx}
@@ -360,198 +231,217 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
     const quotaToPay = Math.min(currentLoanQuota > 0 ? currentLoanQuota : debtToPay, debtToPay);
 
     return (
-      <div className="max-w-xl mx-auto space-y-5 py-5 pb-12 animate-fade-in-up">
-        {/* Mensaje de encabezado centrado */}
-        <div className="text-center space-y-1.5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-rose-100 text-rose-900 border border-rose-300 rounded-full text-xs font-black uppercase tracking-wider">
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
-            <span>Crédito en mora ({creditStatus.daysOverdue} {creditStatus.daysOverdue === 1 ? 'día' : 'días'})</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-purple-950 tracking-tight">
-            Paga tu deuda pendiente
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-600 font-medium max-w-md mx-auto">
-            Hola <span className="font-bold text-purple-950">{user.name}</span>, tu crédito venció el <strong className="text-rose-900 font-mono">{creditStatus.dueDate}</strong>. Realiza el pago para normalizar tu estado con GRUPO ULEP S.A.S.
-          </p>
-        </div>
+      <div className="max-w-xl mx-auto space-y-6 py-6 pb-14 animate-fade-in-up">
+        {/* Contenedor con brillo rojo ambiental */}
+        <div className="relative p-1">
+          <div className="absolute inset-0 bg-red-500/15 blur-3xl -z-10 rounded-full pointer-events-none animate-pulse-glow" />
 
-        {/* Tarjeta de Pago de Deuda */}
-        <div className="bg-white p-6 sm:p-7 rounded-3xl border border-rose-200 shadow-md space-y-5 animate-scale-in">
-          <div className="flex items-center justify-between border-b border-purple-50 pb-3">
-            <h2 className="text-sm font-extrabold text-purple-950 flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-purple-900" />
-              Saldo en Mora
-            </h2>
-            <span className="text-xs font-bold text-rose-900 bg-rose-50 border border-rose-300 px-3 py-0.5 rounded-md font-mono">
-              Venció: {creditStatus.dueDate}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 p-4 bg-rose-50/60 border border-rose-200 rounded-2xl text-center">
-            <div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Deuda Total</span>
-              <p className="text-lg sm:text-xl font-black font-mono text-rose-950 mt-0.5">
-                ${debtToPay.toLocaleString('es-CO')}
-              </p>
+          {/* Mensaje de encabezado centrado con tono rojo intenso */}
+          <div className="text-center space-y-2 mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white border-2 border-red-400 rounded-full text-xs sm:text-sm font-black uppercase tracking-widest shadow-xl shadow-red-600/40 animate-pulse">
+              <AlertTriangle className="w-4 h-4 text-white" />
+              <span>Crédito en mora ({creditStatus.daysOverdue} {creditStatus.daysOverdue === 1 ? 'día' : 'días'})</span>
             </div>
-            <div>
-              <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wide">
-                {creditStatus.frequency === 'quincenal' ? 'Cuota Quincenal' : 'Cuota del Mes'}
+            <h1 className="text-3xl sm:text-4xl font-black text-red-950 tracking-tight pt-1">
+              Paga tu deuda pendiente
+            </h1>
+            <p className="text-xs sm:text-sm text-red-900/90 font-semibold max-w-md mx-auto">
+              Hola <span className="font-black text-red-950">{user.name}</span>, tu crédito venció el <strong className="text-red-700 bg-red-100 px-2 py-0.5 rounded-md font-mono border border-red-300">{creditStatus.dueDate}</strong>. Realiza el pago de inmediato para normalizar tu historial con GRUPO ULEP S.A.S.
+            </p>
+          </div>
+
+          {/* Tarjeta de Pago de Deuda con estilo rojo brillante */}
+          <div className="bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-3xl border-2 border-red-500 shadow-2xl shadow-red-600/25 space-y-6 relative overflow-hidden animate-scale-in">
+            {/* Resplandor decorativo interno */}
+            <div className="absolute -top-16 -right-16 w-40 h-40 bg-red-500/15 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="flex items-center justify-between border-b border-red-100 pb-3 relative z-10">
+              <h2 className="text-sm font-black text-red-950 flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-red-600" />
+                Saldo en Mora
+              </h2>
+              <span className="text-xs font-black text-white bg-red-600 border border-red-400 px-3.5 py-1 rounded-full font-mono shadow-md shadow-red-500/30 animate-pulse">
+                Venció: {creditStatus.dueDate}
               </span>
-              <p className="text-lg sm:text-xl font-black font-mono text-purple-900 mt-0.5">
-                ${quotaToPay.toLocaleString('es-CO')}
-              </p>
             </div>
-          </div>
 
-          {paySuccess && (
-            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-semibold animate-scale-in">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Pago procesado exitosamente</span>
+            {/* Panel de Saldos en Rojo Intenso */}
+            <div className="grid grid-cols-2 gap-3 p-5 sm:p-6 bg-gradient-to-br from-red-700 via-rose-800 to-red-900 text-white border-2 border-red-400/60 rounded-3xl text-center shadow-xl shadow-red-900/30 relative z-10">
+              <div className="border-r border-red-500/50 pr-2">
+                <span className="text-[11px] font-bold text-red-200 uppercase tracking-wider block">Deuda Total</span>
+                <p className="text-xl sm:text-2xl font-black font-mono text-white mt-1 drop-shadow-md">
+                  ${debtToPay.toLocaleString('es-CO')}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setPaySuccess(false)}
-                className="text-emerald-950 underline text-[11px] cursor-pointer hover:opacity-80"
-              >
-                Cerrar
-              </button>
-            </div>
-          )}
-
-          {payError && (
-            <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-xs text-rose-800 font-semibold animate-scale-in">
-              {payError}
-            </div>
-          )}
-
-          {/* BOTONES DE PAGO */}
-          <div className="space-y-3 pt-1">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* BOTÓN 1: PAGAR CUOTA */}
-              <button
-                type="button"
-                onClick={() => executePayment(quotaToPay)}
-                className="p-4 bg-purple-900 hover:bg-purple-950 active:scale-[0.98] text-white rounded-2xl font-bold transition-all duration-200 shadow-sm flex flex-col items-center justify-center text-center cursor-pointer hover:shadow-md"
-              >
-                <span className="text-[11px] uppercase tracking-wide opacity-85">Pagar Cuota</span>
-                <span className="text-sm sm:text-base font-black font-mono mt-0.5 text-emerald-300">
-                  ${quotaToPay.toLocaleString('es-CO')} COP
+              <div className="pl-2">
+                <span className="text-[11px] font-bold text-amber-200 uppercase tracking-wider block">
+                  {creditStatus.frequency === 'quincenal' ? 'Cuota Quincenal' : 'Cuota del Mes'}
                 </span>
-              </button>
-
-              {/* BOTÓN 2: PAGAR CUOTA (PERSONALIZADA) */}
-              <button
-                type="button"
-                onClick={() => setShowCustomInput(!showCustomInput)}
-                className={`p-4 rounded-2xl font-bold border transition-all duration-200 text-center flex flex-col items-center justify-center cursor-pointer active:scale-[0.98] ${
-                  showCustomInput
-                    ? 'bg-purple-100 border-purple-400 text-purple-950 shadow-xs'
-                    : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-900'
-                }`}
-              >
-                <span className="text-[11px] uppercase tracking-wide">Pagar Cuota (Personalizada)</span>
-                <span className="text-xs font-semibold mt-0.5 opacity-80">
-                  {showCustomInput ? 'Ocultar' : 'Otro Valor'}
-                </span>
-              </button>
+                <p className="text-xl sm:text-2xl font-black font-mono text-amber-300 mt-1 drop-shadow-md">
+                  ${quotaToPay.toLocaleString('es-CO')}
+                </p>
+              </div>
             </div>
 
-            {/* BOTÓN 3: LIQUIDACIÓN TOTAL */}
-            <button
-              type="button"
-              onClick={() => executePayment(debtToPay)}
-              className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs transition-all duration-200 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Liquidar Total Deuda (${debtToPay.toLocaleString('es-CO')} COP)</span>
-            </button>
-
-            {showCustomInput && (
-              <div className="p-4 bg-purple-50/90 border border-purple-200 rounded-2xl space-y-2 animate-scale-in">
-                <label className="block text-[11px] font-bold text-purple-950">
-                  Ingresa el valor a pagar ($ COP):
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max={debtToPay}
-                    value={customAmount}
-                    onChange={(e) => setCustomAmount(e.target.value)}
-                    placeholder="Monto a pagar"
-                    className="flex-1 px-3.5 py-2.5 bg-white border border-purple-200 rounded-xl font-mono text-sm font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => executePayment(parseFloat(customAmount || '0'))}
-                    className="px-5 py-2.5 bg-purple-900 hover:bg-purple-950 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
-                  >
-                    Pagar
-                  </button>
+            {paySuccess && (
+              <div className="bg-emerald-50 border-2 border-emerald-400 p-4 rounded-2xl flex items-center justify-between text-xs text-emerald-900 font-bold shadow-lg shadow-emerald-200 animate-scale-in relative z-10">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>Pago procesado exitosamente</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setPaySuccess(false)}
+                  className="text-emerald-950 underline text-xs font-black cursor-pointer hover:opacity-80"
+                >
+                  Cerrar
+                </button>
               </div>
             )}
-          </div>
 
-          {/* Soporte WhatsApp */}
-          <div className="pt-2 border-t border-purple-50 flex items-center justify-between text-xs">
-            <span className="text-slate-600 font-medium">¿Dudas con tu pago?</span>
-            <a
-              href={`https://wa.me/573169008561?text=${encodeURIComponent(`Hola GRUPO ULEP S.A.S., soporte pago en mora - Cédula: ${user.cedula} - Nombre: ${user.name}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs transition-all shadow-2xs"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              <span>Soporte WhatsApp</span>
-            </a>
-          </div>
-        </div>
+            {payError && (
+              <div className="bg-red-50 border-2 border-red-400 p-3.5 rounded-2xl text-xs text-red-900 font-bold shadow-md animate-scale-in relative z-10">
+                {payError}
+              </div>
+            )}
 
-        {/* Movimientos */}
-        <div className="bg-white p-4 rounded-2xl border border-purple-100 shadow-xs space-y-2.5 transition-all duration-300">
-          <div className="flex items-center justify-between border-b border-purple-50 pb-2">
-            <h3 className="text-xs font-extrabold text-purple-950 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-purple-800" />
-              Movimientos Recientes
-            </h3>
-            <span className="text-[10px] text-slate-400 font-medium">
-              {userTransactions.length}
-            </span>
-          </div>
-
-          {userTransactions.length === 0 ? (
-            <p className="text-xs text-slate-400 py-2 text-center">Sin movimientos.</p>
-          ) : (
-            <div className="divide-y divide-purple-50 text-xs">
-              {userTransactions.slice(0, 4).map((tx) => (
-                <div
-                  key={tx.id}
-                  className="py-2 flex items-center justify-between hover:bg-purple-50/50 px-1 rounded-lg transition-colors"
+            {/* BOTONES DE PAGO GRANDES E ILUMINADOS */}
+            <div className="space-y-4 pt-1 relative z-10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* BOTÓN 1: PAGAR CUOTA (GRANDE E ILUMINADO) */}
+                <button
+                  type="button"
+                  onClick={() => executePayment(quotaToPay)}
+                  className="p-5 sm:p-6 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 active:scale-[0.98] text-white rounded-3xl font-black transition-all duration-300 shadow-xl shadow-red-600/50 ring-4 ring-red-400/60 hover:ring-red-300 hover:shadow-2xl hover:shadow-red-500/80 flex flex-col items-center justify-center text-center cursor-pointer relative overflow-hidden group"
                 >
-                  <div>
-                    <p className="font-bold text-purple-950 text-xs">{tx.description}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">{tx.date}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold font-mono text-purple-950 text-xs">
-                      ${tx.amount.toLocaleString('es-CO')}
-                    </span>
+                  <span className="text-xs uppercase tracking-widest font-extrabold text-red-100 drop-shadow-xs">Pagar Cuota</span>
+                  <span className="text-lg sm:text-xl font-black font-mono mt-1 text-amber-300 drop-shadow-md">
+                    ${quotaToPay.toLocaleString('es-CO')} COP
+                  </span>
+                </button>
+
+                {/* BOTÓN 2: PAGAR CUOTA PERSONALIZADA (GRANDE E ILUMINADO) */}
+                <button
+                  type="button"
+                  onClick={() => setShowCustomInput(!showCustomInput)}
+                  className={`p-5 sm:p-6 rounded-3xl font-black border-2 transition-all duration-300 text-center flex flex-col items-center justify-center cursor-pointer active:scale-[0.98] ${
+                    showCustomInput
+                      ? 'bg-red-100 border-red-500 text-red-950 ring-4 ring-red-400/60 shadow-xl shadow-red-400/40'
+                      : 'bg-rose-50 hover:bg-rose-100 border-red-400 text-red-900 ring-2 ring-red-300/50 shadow-lg shadow-rose-300/30 hover:shadow-xl hover:shadow-red-400/50 hover:ring-red-400'
+                  }`}
+                >
+                  <span className="text-xs uppercase tracking-widest font-extrabold">Pagar Otro Valor</span>
+                  <span className="text-sm font-bold mt-1 text-red-700">
+                    {showCustomInput ? '▲ Ocultar campo' : '▼ Cuota personalizada'}
+                  </span>
+                </button>
+              </div>
+
+              {/* BOTÓN 3: LIQUIDACIÓN TOTAL (GRANDE, BRILLANTE E ILUMINADO) */}
+              <button
+                type="button"
+                onClick={() => executePayment(debtToPay)}
+                className="w-full py-5 sm:py-6 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] text-white rounded-3xl font-black text-base sm:text-lg tracking-wide transition-all duration-300 shadow-xl shadow-emerald-600/50 ring-4 ring-emerald-400/50 hover:ring-emerald-300 hover:shadow-2xl hover:shadow-emerald-500/80 flex items-center justify-center gap-3 cursor-pointer"
+              >
+                <CheckCircle2 className="w-6 h-6 shrink-0" />
+                <span>Liquidar Total Deuda (${debtToPay.toLocaleString('es-CO')} COP)</span>
+              </button>
+
+              {showCustomInput && (
+                <div className="p-5 bg-red-50 border-2 border-red-400 rounded-3xl space-y-3 shadow-xl shadow-red-200/50 animate-scale-in">
+                  <label className="block text-xs font-black text-red-950 uppercase tracking-wider">
+                    Ingresa el valor a abonar ($ COP):
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max={debtToPay}
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      placeholder="Monto a pagar"
+                      className="flex-1 px-4 py-3.5 bg-white border-2 border-red-400 rounded-2xl font-mono text-base font-black text-red-950 focus:outline-none focus:ring-4 focus:ring-red-400/50"
+                    />
                     <button
                       type="button"
-                      onClick={() => setSelectedReceiptTx(tx)}
-                      className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-900 font-bold rounded text-[10px] cursor-pointer transition-all"
+                      onClick={() => executePayment(parseFloat(customAmount || '0'))}
+                      className="px-7 py-3.5 bg-red-700 hover:bg-red-800 active:scale-95 text-white font-black text-sm rounded-2xl shadow-xl shadow-red-700/50 ring-2 ring-red-400 transition-all cursor-pointer"
                     >
-                      Recibo
+                      Pagar
                     </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
-          )}
+
+            {/* Soporte WhatsApp Destacado */}
+            <div className="pt-3 border-t border-red-100 flex items-center justify-between text-xs relative z-10">
+              <span className="text-red-900 font-bold">¿Tienes dudas o necesitas un acuerdo?</span>
+              <a
+                href={`https://wa.me/573169008561?text=${encodeURIComponent(`Hola GRUPO ULEP S.A.S., soporte pago en mora - Cédula: ${user.cedula} - Nombre: ${user.name}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black rounded-2xl text-xs sm:text-sm transition-all shadow-lg shadow-emerald-600/40 ring-2 ring-emerald-300"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Soporte WhatsApp</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Movimientos */}
+          <div className="bg-white/90 backdrop-blur-xs p-5 rounded-3xl border border-red-200 shadow-md space-y-3 mt-6 transition-all duration-300">
+            <div className="flex items-center justify-between border-b border-red-50 pb-2">
+              <h3 className="text-xs font-black text-red-950 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-red-600" />
+                Movimientos Recientes
+              </h3>
+              <span className="text-[11px] text-red-800/70 font-bold">
+                {userTransactions.length} transacciones
+              </span>
+            </div>
+
+            {userTransactions.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">Sin movimientos registrados.</p>
+            ) : (
+              <div className="divide-y divide-red-50 text-xs">
+                {userTransactions.slice(0, 4).map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="py-2.5 flex items-center justify-between hover:bg-red-50/60 px-2 rounded-xl transition-colors"
+                  >
+                    <div>
+                      <p className="font-bold text-red-950 text-xs">{tx.description}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{tx.date}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-black font-mono text-red-950 text-xs">
+                        ${tx.amount.toLocaleString('es-CO')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReceiptTx(tx)}
+                        className="px-2.5 py-1 bg-red-50 hover:bg-red-100 active:scale-95 text-red-900 font-bold rounded-lg text-[10px] cursor-pointer transition-all border border-red-200"
+                      >
+                        Recibo
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Pie de página */}
+        <footer className="pt-6 pb-2 border-t border-red-200/60 text-center space-y-1.5 text-xs text-red-950/70">
+          <p className="font-bold text-red-950">
+            © {new Date().getFullYear()} GRUPO ULEP S.A.S. Todos los derechos reservados.
+          </p>
+          <p className="text-[11px] text-red-800/60">
+            Créditos responsables y seguros • Vigilado y protegido
+          </p>
+        </footer>
 
         <ReceiptModal
           transaction={selectedReceiptTx}
@@ -660,16 +550,14 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
 
       {/* 2 BOTONES LARGOS AL INICIO: PAGAR Y EXTENDER */}
       <div className="space-y-2.5 animate-fade-in-up">
-        {/* BOTÓN 1: PAGAR */}
+        {/* BOTÓN 1: PAGAR DIRECTAMENTE LA CUOTA */}
         <button
           type="button"
-          onClick={() => {
-            setShowPayOptions(!showPayOptions);
-          }}
+          onClick={() => executePayment(activeQuota)}
           className="w-full py-4 px-6 bg-purple-900 hover:bg-purple-950 active:scale-[0.99] text-white rounded-2xl font-black text-base tracking-wider uppercase transition-all duration-200 shadow-md flex items-center justify-center gap-2 cursor-pointer"
         >
           <DollarSign className="w-5 h-5 text-emerald-300" />
-          <span>PAGAR</span>
+          <span>PAGAR CUOTA</span>
         </button>
 
         {/* BOTÓN 2: EXTENDER */}
@@ -785,201 +673,199 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
         </div>
       )}
 
-      {/* CASO: CRÉDITO ACTIVO */}
-      {showPayOptions && (
-        <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-xs space-y-4 transition-all duration-300 hover:shadow-md animate-fade-in-up">
-          {paySuccess && (
-            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-semibold animate-scale-in">
+      {/* OPCIONES DE PAGO Y DETALLES DEL CRÉDITO SIEMPRE VISIBLES */}
+      <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-xs space-y-4 transition-all duration-300 hover:shadow-md animate-fade-in-up">
+        {paySuccess && (
+          <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-semibold animate-scale-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Pago procesado exitosamente</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPaySuccess(false)}
+              className="text-emerald-950 underline text-[11px] cursor-pointer hover:opacity-80"
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
+
+        {payError && (
+          <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-xs text-rose-800 font-semibold animate-scale-in">
+            {payError}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {/* BOTÓN LARGO: PAGAR OTRO VALOR CON FLECHA (V) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowCustomInput(!showCustomInput)}
+              className={`w-full py-3.5 px-4 rounded-xl font-bold border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
+                showCustomInput
+                  ? 'bg-purple-100 border-purple-400 text-purple-950 shadow-xs'
+                  : 'bg-purple-50/80 hover:bg-purple-100/90 border-purple-200 text-purple-950'
+              }`}
+            >
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Pago procesado exitosamente</span>
+                <DollarSign className="w-4 h-4 text-purple-900" />
+                <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wide">
+                  Pagar otro valor
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setPaySuccess(false)}
-                className="text-emerald-950 underline text-[11px] cursor-pointer hover:opacity-80"
-              >
-                Cerrar
-              </button>
-            </div>
-          )}
+              <div className="flex items-center gap-1 text-purple-900 font-bold text-xs">
+                <span>{showCustomInput ? 'Ocultar' : 'Ingresar monto'}</span>
+                {showCustomInput ? (
+                  <ChevronUp className="w-4 h-4 shrink-0 transition-transform" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 shrink-0 transition-transform" />
+                )}
+              </div>
+            </button>
 
-          {payError && (
-            <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-xs text-rose-800 font-semibold animate-scale-in">
-              {payError}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {/* BOTÓN LARGO: PAGAR OTRO VALOR CON FLECHA (V) */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowCustomInput(!showCustomInput)}
-                className={`w-full py-3.5 px-4 rounded-xl font-bold border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
-                  showCustomInput
-                    ? 'bg-purple-100 border-purple-400 text-purple-950 shadow-xs'
-                    : 'bg-purple-50/80 hover:bg-purple-100/90 border-purple-200 text-purple-950'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-purple-900" />
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wide">
-                    Pagar otro valor
+            {/* DESPLIEGUE: COLOCAR OTRO VALOR Y PAGAR */}
+            {showCustomInput && (
+              <div className="mt-2 p-4 bg-purple-50/90 border border-purple-200 rounded-xl space-y-3 animate-scale-in">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-purple-950">
+                    Monto a pagar ($ COP):
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Máx: ${currentDebt.toLocaleString('es-CO')}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 text-purple-900 font-bold text-xs">
-                  <span>{showCustomInput ? 'Ocultar' : 'Ingresar monto'}</span>
-                  {showCustomInput ? (
-                    <ChevronUp className="w-4 h-4 shrink-0 transition-transform" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 shrink-0 transition-transform" />
-                  )}
-                </div>
-              </button>
-
-              {/* DESPLIEGUE: COLOCAR OTRO VALOR Y PAGAR */}
-              {showCustomInput && (
-                <div className="mt-2 p-4 bg-purple-50/90 border border-purple-200 rounded-xl space-y-3 animate-scale-in">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-purple-950">
-                      Monto a pagar ($ COP):
-                    </label>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      Máx: ${currentDebt.toLocaleString('es-CO')}
-                    </span>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2.5 text-slate-400 font-mono font-bold text-sm">$</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={currentDebt}
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      placeholder="Ingresa valor deseado"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-purple-200 rounded-xl font-mono text-sm font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-700"
+                    />
                   </div>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-2.5 text-slate-400 font-mono font-bold text-sm">$</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max={currentDebt}
-                        value={customAmount}
-                        onChange={(e) => setCustomAmount(e.target.value)}
-                        placeholder="Ingresa valor deseado"
-                        className="w-full pl-7 pr-3 py-2 bg-white border border-purple-200 rounded-xl font-mono text-sm font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-700"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => executePayment(parseFloat(customAmount || '0'))}
-                      className="px-5 py-2 bg-purple-900 hover:bg-purple-950 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Pagar</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => executePayment(parseFloat(customAmount || '0'))}
+                    className="px-5 py-2 bg-purple-900 hover:bg-purple-950 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Pagar</span>
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
 
-            {/* BOTÓN LARGO: CARACTERÍSTICAS */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setShowCharacteristics(!showCharacteristics)}
-                className={`w-full py-3.5 px-4 rounded-xl font-bold border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
-                  showCharacteristics
-                    ? 'bg-purple-900 text-white border-purple-900 shadow-xs'
-                    : 'bg-white hover:bg-purple-50/70 border-purple-200 text-purple-950'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FileText className={`w-4 h-4 ${showCharacteristics ? 'text-emerald-300' : 'text-purple-800'}`} />
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wide">
-                    Características
+          {/* BOTÓN LARGO: CARACTERÍSTICAS */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowCharacteristics(!showCharacteristics)}
+              className={`w-full py-3.5 px-4 rounded-xl font-bold border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
+                showCharacteristics
+                  ? 'bg-purple-900 text-white border-purple-900 shadow-xs'
+                  : 'bg-white hover:bg-purple-50/70 border-purple-200 text-purple-950'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <FileText className={`w-4 h-4 ${showCharacteristics ? 'text-emerald-300' : 'text-purple-800'}`} />
+                <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wide">
+                  Características
+                </span>
+              </div>
+              <div className="flex items-center gap-1 font-bold text-xs">
+                <span>{showCharacteristics ? 'Ocultar detalles' : 'Ver desglose'}</span>
+                {showCharacteristics ? (
+                  <ChevronUp className="w-4 h-4 shrink-0 transition-transform" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 shrink-0 transition-transform" />
+                )}
+              </div>
+            </button>
+
+            {/* DESPLIEGUE: INFORMACIÓN DE CARACTERÍSTICAS */}
+            {showCharacteristics && (
+              <div className="mt-2 p-4 bg-white border border-purple-200 rounded-xl space-y-3 animate-scale-in shadow-2xs">
+                <div className="flex items-center justify-between border-b border-purple-100 pb-2">
+                  <span className="text-[11px] font-bold text-purple-950 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-800" />
+                    Desglose de Crédito
+                  </span>
+                  <span className="text-[10px] font-mono text-purple-900 bg-purple-50 px-2 py-0.5 rounded-full font-bold">
+                    GRUPO ULEP S.A.S.
                   </span>
                 </div>
-                <div className="flex items-center gap-1 font-bold text-xs">
-                  <span>{showCharacteristics ? 'Ocultar detalles' : 'Ver desglose'}</span>
-                  {showCharacteristics ? (
-                    <ChevronUp className="w-4 h-4 shrink-0 transition-transform" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 shrink-0 transition-transform" />
-                  )}
-                </div>
-              </button>
 
-              {/* DESPLIEGUE: INFORMACIÓN DE CARACTERÍSTICAS */}
-              {showCharacteristics && (
-                <div className="mt-2 p-4 bg-white border border-purple-200 rounded-xl space-y-3 animate-scale-in shadow-2xs">
-                  <div className="flex items-center justify-between border-b border-purple-100 pb-2">
-                    <span className="text-[11px] font-bold text-purple-950 flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-purple-800" />
-                      Desglose de Crédito
-                    </span>
-                    <span className="text-[10px] font-mono text-purple-900 bg-purple-50 px-2 py-0.5 rounded-full font-bold">
-                      GRUPO ULEP S.A.S.
+                <div className="space-y-2 text-xs divide-y divide-purple-50">
+                  {/* Monto Principal */}
+                  <div className="pt-1.5 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Monto Principal:</span>
+                    <span className="font-mono font-bold text-purple-950">
+                      ${Math.round(currentDebt * 0.78).toLocaleString('es-CO')} COP
                     </span>
                   </div>
 
-                  <div className="space-y-2 text-xs divide-y divide-purple-50">
-                    {/* Monto Principal */}
-                    <div className="pt-1.5 flex items-center justify-between">
-                      <span className="text-slate-600 font-medium">Monto Principal:</span>
-                      <span className="font-mono font-bold text-purple-950">
-                        ${Math.round(currentDebt * 0.78).toLocaleString('es-CO')} COP
-                      </span>
-                    </div>
+                  {/* Interés */}
+                  <div className="pt-1.5 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Interés:</span>
+                    <span className="font-mono font-bold text-purple-950">
+                      ${Math.round(currentDebt * 0.05).toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
 
-                    {/* Interés */}
-                    <div className="pt-1.5 flex items-center justify-between">
-                      <span className="text-slate-600 font-medium">Interés:</span>
-                      <span className="font-mono font-bold text-purple-950">
-                        ${Math.round(currentDebt * 0.05).toLocaleString('es-CO')} COP
-                      </span>
-                    </div>
+                  {/* Fianza */}
+                  <div className="pt-1.5 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Fianza:</span>
+                    <span className="font-mono font-bold text-purple-950">
+                      ${Math.round(currentDebt * 0.08).toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
 
-                    {/* Fianza */}
-                    <div className="pt-1.5 flex items-center justify-between">
-                      <span className="text-slate-600 font-medium">Fianza:</span>
-                      <span className="font-mono font-bold text-purple-950">
-                        ${Math.round(currentDebt * 0.08).toLocaleString('es-CO')} COP
-                      </span>
-                    </div>
+                  {/* Firma Electrónica */}
+                  <div className="pt-1.5 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Firma Electrónica:</span>
+                    <span className="font-mono font-bold text-purple-950">
+                      ${(15000).toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
 
-                    {/* Firma Electrónica */}
-                    <div className="pt-1.5 flex items-center justify-between">
-                      <span className="text-slate-600 font-medium">Firma Electrónica:</span>
-                      <span className="font-mono font-bold text-purple-950">
-                        ${(15000).toLocaleString('es-CO')} COP
-                      </span>
-                    </div>
+                  {/* IVA */}
+                  <div className="pt-1.5 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">IVA:</span>
+                    <span className="font-mono font-bold text-purple-950">
+                      ${Math.max(0, currentDebt - Math.round(currentDebt * 0.78) - Math.round(currentDebt * 0.05) - Math.round(currentDebt * 0.08) - 15000).toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
 
-                    {/* IVA */}
-                    <div className="pt-1.5 flex items-center justify-between">
-                      <span className="text-slate-600 font-medium">IVA:</span>
-                      <span className="font-mono font-bold text-purple-950">
-                        ${Math.max(0, currentDebt - Math.round(currentDebt * 0.78) - Math.round(currentDebt * 0.05) - Math.round(currentDebt * 0.08) - 15000).toLocaleString('es-CO')} COP
-                      </span>
-                    </div>
+                  {/* Fecha Límite de Pago */}
+                  <div className="pt-1.5 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Fecha Límite de Pago:</span>
+                    <span className="font-mono font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded">
+                      {creditStatus.dueDate}
+                    </span>
+                  </div>
 
-                    {/* Fecha Límite de Pago */}
-                    <div className="pt-1.5 flex items-center justify-between">
-                      <span className="text-slate-600 font-medium">Fecha Límite de Pago:</span>
-                      <span className="font-mono font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded">
-                        {creditStatus.dueDate}
-                      </span>
-                    </div>
-
-                    {/* Pago Total */}
-                    <div className="pt-2 flex items-center justify-between border-t border-purple-200">
-                      <span className="text-xs font-black text-purple-950 uppercase tracking-wide">
-                        Pago Total:
-                      </span>
-                      <span className="text-sm font-black font-mono text-purple-950">
-                        ${currentDebt.toLocaleString('es-CO')} COP
-                      </span>
-                    </div>
+                  {/* Pago Total */}
+                  <div className="pt-2 flex items-center justify-between border-t border-purple-200">
+                    <span className="text-xs font-black text-purple-950 uppercase tracking-wide">
+                      Pago Total:
+                    </span>
+                    <span className="text-sm font-black font-mono text-purple-950">
+                      ${currentDebt.toLocaleString('es-CO')} COP
+                    </span>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
 
       {/* Movimientos */}
@@ -1038,6 +924,16 @@ export const ClientPanel: React.FC<ClientPanelProps> = ({
           <span>3169008561</span>
         </a>
       </div>
+
+      {/* Pie de página sencillo */}
+      <footer className="pt-6 pb-2 border-t border-purple-100/80 text-center space-y-1.5 text-xs text-slate-500 animate-fade-in-up">
+        <p className="font-semibold text-purple-950/80">
+          © {new Date().getFullYear()} GRUPO ULEP S.A.S. Todos los derechos reservados.
+        </p>
+        <p className="text-[11px] text-slate-400">
+          Créditos responsables y seguros • Vigilado y protegido
+        </p>
+      </footer>
 
       <ReceiptModal
         transaction={selectedReceiptTx}

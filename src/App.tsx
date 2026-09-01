@@ -63,9 +63,9 @@ export default function App() {
             ...updatedList[index],
             ...savedUser,
             name: cleanName,
-            cedula: updatedList[index].cedula,
-            pin: updatedList[index].pin,
-            role: updatedList[index].role,
+            cedula: savedUser.cedula || updatedList[index].cedula,
+            pin: savedUser.pin || updatedList[index].pin,
+            role: savedUser.role || updatedList[index].role,
             status: savedUser.status || updatedList[index].status
           };
         } else {
@@ -399,7 +399,11 @@ export default function App() {
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === userId) {
-          const updated = { ...u, status: newStatus };
+          const updated: User = { 
+            ...u, 
+            status: newStatus,
+            creditUsed: newStatus === 'blocked' ? 0 : u.creditUsed
+          };
           saveUserToFirebase(updated);
           return updated;
         }
@@ -444,15 +448,40 @@ export default function App() {
           const updatedLoan = { ...l, status };
           saveLoanToFirebase(updatedLoan);
 
-          // If approving, credit amount to user balance and subtract from capital
+          // If approving, credit amount to user balance and update credit terms & status
           if (status === 'approved' && l.status === 'pending') {
             const targetUser = users.find((u) => u.id === l.userId);
             if (targetUser) {
-              handleUpdateUser({
-                ...targetUser,
-                balance: targetUser.balance + l.amount
-              });
+              const termDays = l.months === 0.5 ? 15 : (l.months && l.months > 0 ? Math.round(l.months * 30) : 30);
+              const freq: 'quincenal' | 'mensual' = termDays <= 15 ? 'quincenal' : 'mensual';
+              const newDebt = (targetUser.creditUsed || 0) + l.amount;
+              const newCreditLimit = Math.max(targetUser.creditLimit || 0, newDebt, 2000000);
+              const daysPerInst = freq === 'quincenal' ? 15 : 30;
+              const calculatedInstallments = Math.max(1, Math.round(termDays / daysPerInst));
+              const calculatedQuota = l.monthlyPayment && l.monthlyPayment > 0
+                ? l.monthlyPayment
+                : Math.round(newDebt / calculatedInstallments);
 
+              const now = new Date();
+              const year = now.getFullYear();
+              const month = String(now.getMonth() + 1).padStart(2, '0');
+              const day = String(now.getDate()).padStart(2, '0');
+              const formattedDate = `${year}-${month}-${day}`;
+
+              const updatedUser: User = {
+                ...targetUser,
+                balance: (targetUser.balance || 0) + l.amount,
+                creditUsed: newDebt,
+                creditLimit: newCreditLimit,
+                loanStartDate: formattedDate,
+                paymentTermDays: termDays,
+                loanPaymentFrequency: freq,
+                loanQuota: calculatedQuota,
+                loanQuotasTotal: calculatedInstallments,
+                status: 'active'
+              };
+
+              handleUpdateUser(updatedUser);
               handleAdjustAdminCapital(-l.amount);
 
               handleAddTransaction({
@@ -460,10 +489,10 @@ export default function App() {
                 userId: l.userId,
                 type: 'loan_payout',
                 amount: l.amount,
-                description: `Desembolso de Préstamo CrediULEP (${l.months}m)`,
+                description: `Desembolso de Préstamo CrediULEP (${termDays}d)`,
                 category: 'Inversión',
                 status: 'completed',
-                date: new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
+                date: new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })
               });
             }
           }

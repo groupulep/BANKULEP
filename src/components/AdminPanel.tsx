@@ -31,7 +31,8 @@ import {
   MapPin,
   Phone,
   Mail,
-  Info
+  Info,
+  Send
 } from 'lucide-react';
 import { exportClientsToExcel, downloadBulkUploadTemplate } from '../utils/excelHelper';
 import { BulkUploadModal } from './BulkUploadModal';
@@ -61,6 +62,8 @@ interface AdminPanelProps {
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   users,
+  transactions,
+  loans,
   captchaLogs,
   securitySettings,
   adminCapital,
@@ -70,11 +73,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onAddBatchUsers,
   onDeleteUser,
   onDeleteCaptchaLog,
+  onUpdateUserStatus,
+  onResetUserPin,
+  onUpdateCreditLimit,
+  onUpdateLoanStatus,
   onUpdateSecuritySettings,
   onAddTransaction,
   onAdjustAdminCapital,
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'captcha'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'loans' | 'captcha'>('users');
   const [userSearch, setUserSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [debtFilter, setDebtFilter] = useState<'all' | 'with_debt' | 'no_debt'>('all');
@@ -174,6 +181,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const updatedUser: User = {
       ...u,
       creditUsed: newCreditUsed,
+      status: newCreditUsed <= 0 ? 'blocked' : (statusInfo.isOverdue ? 'pending' : 'active'),
     };
 
     onUpdateUser(updatedUser);
@@ -185,20 +193,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     if (onAddTransaction) {
+      const txId = `PAY-ADMIN-${Date.now()}`;
+      const desc =
+        type === 'total'
+          ? `Pago Total de Crédito registrado por Admin (${u.name})`
+          : type === 'custom'
+          ? `Abono Personalizado registrado por Admin (${u.name})`
+          : `Pago de Cuota de Crédito registrado por Admin (${u.name})`;
+      const nowStr = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+
       onAddTransaction({
-        id: `PAY-ADMIN-${Date.now()}`,
+        id: txId,
         userId: u.id,
         type: 'transfer_in',
         amount: payAmount,
-        description:
-          type === 'total'
-            ? `Pago Total de Crédito registrado por Admin (${u.name})`
-            : type === 'custom'
-            ? `Abono Personalizado registrado por Admin (${u.name})`
-            : `Pago de Cuota de Crédito registrado por Admin (${u.name})`,
+        description: desc,
         category: 'Servicios',
         status: 'completed',
-        date: new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }),
+        date: nowStr,
       });
     }
 
@@ -327,6 +339,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       loanQuotasTotal: calculatedInstallments,
       dailyInterestRate: Number(formData.dailyInterestRate) || 0.05,
     };
+    const calculatedInfo = calculateCreditStatus(updated);
+    updated.status = parsedDebt <= 0 ? 'blocked' : (calculatedInfo.isOverdue ? 'pending' : 'active');
+
     onUpdateUser(updated);
     setEditingUser(null);
   };
@@ -518,6 +533,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {[
           { id: 'users', label: 'Directorio de Clientes', count: totalClientsCount, icon: Users },
           { id: 'payments', label: 'Gestión y Registro de Pagos', count: users.filter((u) => u.creditUsed > 0).length, icon: CreditCard },
+          { id: 'loans', label: 'Solicitudes de Crédito', count: loans ? loans.filter((l) => l.status === 'pending').length : 0, icon: Send },
           { id: 'captcha', label: 'Seguridad y Cifrado', count: captchaLogs.length, icon: ShieldCheck }
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1074,7 +1090,124 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: SEGURIDAD Y CIFRADO */}
+      {/* TAB 3: SOLICITUDES DE CRÉDITO */}
+      {activeTab === 'loans' && (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-2xl border border-purple-100 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-sm font-black text-purple-950 flex items-center gap-2">
+                <Send className="w-4 h-4 text-purple-700" />
+                Bandeja de Solicitudes de Crédito
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Aprueba desembolsos o rechaza solicitudes enviadas por clientes. Al aprobar, el saldo y crédito del cliente se actualizan en tiempo real.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 bg-purple-100 text-purple-900 rounded-full font-mono text-xs font-bold">
+                {loans ? loans.filter((l) => l.status === 'pending').length : 0} pendientes
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {(!loans || loans.length === 0) ? (
+              <div className="bg-white p-12 rounded-3xl border border-purple-100 text-center space-y-2">
+                <Send className="w-8 h-8 text-purple-300 mx-auto" />
+                <p className="font-bold text-sm text-purple-950">No hay solicitudes de crédito registradas</p>
+                <p className="text-xs text-slate-500">Las solicitudes que los clientes generen aparecerán aquí para su aprobación inmediata.</p>
+              </div>
+            ) : (
+              loans.map((loan) => {
+                const requestingUser = users.find((u) => u.id === loan.userId);
+                const isPending = loan.status === 'pending';
+                const isApproved = loan.status === 'approved';
+
+                return (
+                  <div
+                    key={loan.id}
+                    className={`bg-white p-4 sm:p-5 rounded-3xl border transition-all ${
+                      isPending
+                        ? 'border-purple-300 shadow-md ring-2 ring-purple-100'
+                        : isApproved
+                        ? 'border-emerald-200 bg-emerald-50/20'
+                        : 'border-slate-200 opacity-75'
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-sm text-purple-950">
+                            {requestingUser ? requestingUser.name : `Cliente ID: ${loan.userId}`}
+                          </span>
+                          {requestingUser && (
+                            <span className="text-xs font-mono text-slate-500">
+                              CC: {requestingUser.cedula}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              isPending
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                                : isApproved
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : 'bg-rose-100 text-rose-900 border border-rose-300'
+                            }`}
+                          >
+                            {isPending ? 'Pendiente Aprobación' : isApproved ? 'Aprobado y Desembolsado' : 'Rechazado'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-xs text-slate-600 flex-wrap pt-1">
+                          <span className="font-bold">
+                            Monto: <strong className="text-purple-950 font-mono text-sm">${loan.amount.toLocaleString('es-CO')} COP</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Plazo: <strong className="text-slate-800">{loan.months === 0.5 ? '15 Días (Quincenal)' : `${loan.months * 30 || 30} Días`}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Cuota: <strong className="text-slate-800 font-mono">${(loan.monthlyPayment || loan.amount).toLocaleString('es-CO')} COP</strong>
+                          </span>
+                          <span>•</span>
+                          <span className="text-slate-400 font-mono text-[11px]">
+                            {loan.createdAt ? new Date(loan.createdAt).toLocaleString('es-CO') : 'Reciente'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Botones de acción si está pendiente */}
+                      {isPending && onUpdateLoanStatus && (
+                        <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                          <button
+                            type="button"
+                            onClick={() => onUpdateLoanStatus(loan.id, 'approved')}
+                            className="flex-1 md:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Aprobar y Desembolsar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateLoanStatus(loan.id, 'rejected')}
+                            className="flex-1 md:flex-initial px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <X className="w-4 h-4" />
+                            <span>Rechazar</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: SEGURIDAD Y CIFRADO */}
       {activeTab === 'captcha' && (
         <div className="space-y-5">
           {/* Banner de Cifrado */}

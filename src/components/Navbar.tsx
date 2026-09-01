@@ -85,32 +85,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           />
         </button>
 
-        {/* Right side Actions: Notifications Button & Menu */}
+        {/* Right side Actions: Menu */}
         <div className="flex items-center gap-2">
-          {/* BOTÓN DE NOTIFICACIONES DIRECTO CON N° DE NOTIFICACIONES */}
-          <button
-            id="navbar-notifications-btn"
-            type="button"
-            onClick={() => setShowNotificationsModal(true)}
-            className="relative p-2.5 bg-purple-900/90 hover:bg-purple-800 border border-purple-700/70 text-white rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center"
-            title="Centro de Notificaciones"
-            aria-label="Notificaciones"
-          >
-            <Bell className="w-5 h-5 text-white transition-transform duration-200 hover:rotate-12" />
-            
-            {/* NÚMERO / CONTADOR DE NOTIFICACIONES VISIBLE */}
-            {unreadCount > 0 ? (
-              <span
-                id="notifications-badge-count"
-                className="absolute -top-1.5 -right-1.5 bg-white text-purple-950 font-black font-mono text-[11px] min-w-[20px] h-[20px] px-1 rounded-full flex items-center justify-center shadow-md border-2 border-purple-950 animate-pulse"
-              >
-                {unreadCount}
-              </span>
-            ) : (
-              <span className="w-2 h-2 rounded-full bg-slate-400 absolute top-1.5 right-1.5 opacity-60" />
-            )}
-          </button>
-
           {/* Menú Dropdown */}
           <div className="relative" ref={menuRef}>
             <button
